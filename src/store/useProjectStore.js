@@ -284,7 +284,7 @@ const useProjectStore = create(
           progress: 0,
           phases,
           units,
-          scopes: [],
+          scopes: projectData.scopes || [],
           createdAt: new Date().toISOString().split("T")[0],
         };
         set({ projects: [...projects, newProject] });

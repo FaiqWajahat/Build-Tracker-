@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { X, ChevronRight, ChevronLeft, Check, Building2 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import Step1BasicInfo from "./steps/Step1BasicInfo";
@@ -35,6 +36,7 @@ function validateStep(step, basicInfo, structure) {
 }
 
 export default function AddProjectModal({ open, onClose }) {
+  const router = useRouter();
   const addProject = useProjectStore((s) => s.addProject);
   const [step, setStep] = useState(1);
   const [dir, setDir] = useState(1); // animation direction
@@ -77,9 +79,13 @@ export default function AddProjectModal({ open, onClose }) {
     setSaving(true);
     // Simulate tiny async delay for UX
     await new Promise((r) => setTimeout(r, 400));
-    addProject({ ...basicInfo, structure, scopes });
+    const newProject = addProject({ ...basicInfo, structure, scopes });
     setSaving(false);
     onClose();
+    // Navigate straight to the new project
+    if (newProject?.id) {
+      router.push(`/projects/${newProject.id}`);
+    }
   }
 
   const canNext = validateStep(step, basicInfo, structure);

@@ -5,7 +5,8 @@ import Link from "next/link";
 import {
   FolderKanban, CheckCircle2, AlertTriangle,
   Search, Plus, MapPin, Calendar, User,
-  Filter, Building2, Layers
+  Filter, Building2, Layers, TrendingUp, Clock,
+  ChevronRight, BarChart3
 } from "lucide-react";
 import useProjectStore from "@/store/useProjectStore";
 import AddProjectModal from "@/components/projects/AddProjectModal";
@@ -13,40 +14,70 @@ import { PROJECT_TYPES } from "@/components/projects/ProjectTypeConfig";
 
 /* ─── Status config ───────────────────────────────────────────────── */
 const statusConfig = {
-  "On Track": { bgClass: "bg-status-ontrack/10 text-status-ontrack", dotClass: "bg-status-ontrack" },
-  "Ahead":    { bgClass: "bg-status-ahead/10 text-status-ahead",           dotClass: "bg-status-ahead" },
-  "Delayed":  { bgClass: "bg-status-delayed/10 text-status-delayed",         dotClass: "bg-status-delayed" },
-  "At Risk":  { bgClass: "bg-status-atrisk/10 text-status-atrisk",           dotClass: "bg-status-atrisk" },
+  "On Track": {
+    bg: "bg-status-ontrack/10",
+    text: "text-status-ontrack",
+    dot: "bg-status-ontrack",
+    border: "border-status-ontrack/20",
+  },
+  "Ahead": {
+    bg: "bg-status-ahead/10",
+    text: "text-status-ahead",
+    dot: "bg-status-ahead",
+    border: "border-status-ahead/20",
+  },
+  "Delayed": {
+    bg: "bg-status-delayed/10",
+    text: "text-status-delayed",
+    dot: "bg-status-delayed",
+    border: "border-status-delayed/20",
+  },
+  "At Risk": {
+    bg: "bg-status-atrisk/10",
+    text: "text-status-atrisk",
+    dot: "bg-status-atrisk",
+    border: "border-status-atrisk/20",
+  },
 };
 
-/* ─── Unit count helper ───────────────────────────────────────────── */
+/* ─── Progress bar colour ─────────────────────────────────────────── */
+function progressBarColor(p) {
+  if (p >= 80) return "bg-status-ontrack";
+  if (p >= 50) return "bg-primary";
+  if (p >= 25) return "bg-status-delayed";
+  return "bg-status-atrisk";
+}
+
+/* ─── Unit & section count helpers ───────────────────────────────── */
 function countUnits(project) {
+  // First: use stored units array (populated when project is created / edited)
+  if (project.units && project.units.length > 0) return project.units.length;
+  // Fallback: derive from structure (for older/seed data)
   const s = project.structure;
   if (!s) return 0;
-  // Villa Complex — phases or flat
   if (s.phases) return s.phases.reduce((sum, p) => sum + (p.units?.length || 0), 0);
-  if (s.units) return s.units.length;
-  // Apartment / Tower — floors
+  if (s.units)  return s.units.length;
   if (s.floors) return s.floors.reduce((sum, f) => sum + (f.units?.length || 0), 0);
-  // Mall
-  if (s.zones) return s.zones.reduce((sum, z) => sum + (z.shops?.length || 0), 0);
-  // Compound
+  if (s.zones)  return s.zones.reduce((sum, z) => sum + (z.shops?.length || 0), 0);
   if (s.blocks) return s.blocks.reduce((sum, b) => sum + (b.units?.length || 0), 0);
-  // Industrial
-  if (s.bays) return s.bays.length;
-  // Infra
+  if (s.bays)   return s.bays.length;
   if (s.segments) return s.segments.length;
   return 0;
 }
 
 function countSections(project) {
+  // First: use stored phases array
+  if (project.phases && project.phases.length > 0) {
+    return { label: "phases", count: project.phases.length };
+  }
+  // Fallback: derive from structure
   const s = project.structure;
   if (!s) return null;
-  if (s.phases) return { label: "phases", count: s.phases.length };
-  if (s.floors) return { label: "floors", count: s.floors.length };
-  if (s.zones)  return { label: "zones",  count: s.zones.length };
-  if (s.blocks) return { label: "blocks", count: s.blocks.length };
-  if (s.bays)   return { label: "bays",   count: s.bays.length };
+  if (s.phases)   return { label: "phases",   count: s.phases.length };
+  if (s.floors)   return { label: "floors",   count: s.floors.length };
+  if (s.zones)    return { label: "zones",    count: s.zones.length };
+  if (s.blocks)   return { label: "blocks",   count: s.blocks.length };
+  if (s.bays)     return { label: "bays",     count: s.bays.length };
   if (s.segments) return { label: "segments", count: s.segments.length };
   return null;
 }
@@ -56,10 +87,142 @@ function typeIcon(typeVal) {
   return PROJECT_TYPES.find((t) => t.value === typeVal)?.icon || "🏗️";
 }
 
+/* ─── Metric Card ─────────────────────────────────────────────────── */
+function MetricCard({ label, value, icon: Icon, colorClass, sub }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 hover:shadow-sm transition-all duration-200 fade-up group">
+      <div className="flex items-center justify-between mb-3">
+        <span className="text-[12px] font-semibold text-muted-foreground">{label}</span>
+        <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${colorClass} transition-transform duration-200 group-hover:scale-110`}>
+          <Icon size={16} />
+        </div>
+      </div>
+      <p className="text-2xl font-extrabold text-foreground leading-none">{value}</p>
+      {sub && <p className="text-[11px] text-muted-foreground mt-1.5">{sub}</p>}
+    </div>
+  );
+}
+
+/* ─── Project Card ────────────────────────────────────────────────── */
+function ProjectCard({ project }) {
+  const sc = statusConfig[project.status] || statusConfig["On Track"];
+  const units = countUnits(project);
+  const sections = countSections(project);
+  const icon = typeIcon(project.type);
+  const barColor = progressBarColor(project.progress);
+
+  return (
+    <Link
+      href={`/projects/${project.id}`}
+      className="group bg-card border border-border rounded-xl overflow-hidden hover:shadow-md hover:border-border/60 transition-all duration-200 flex flex-col"
+    >
+      {/* Top accent bar — color by progress */}
+      <div className="h-1 w-full bg-muted">
+        <div
+          className={`h-full ${barColor} transition-all duration-700 rounded-r-full`}
+          style={{ width: `${project.progress}%` }}
+        />
+      </div>
+
+      <div className="p-5 flex flex-col flex-1">
+        {/* Header row */}
+        <div className="flex items-start justify-between gap-2 mb-4">
+          <div className="flex items-start gap-2.5 min-w-0">
+            <span className="text-xl leading-none mt-0.5 shrink-0">{icon}</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">{project.type}</span>
+                {project.subtype && (
+                  <span className="text-[10px] text-muted-foreground opacity-60">· {project.subtype}</span>
+                )}
+              </div>
+              <h3 className="text-[14px] font-extrabold text-foreground truncate mt-0.5 group-hover:text-primary transition-colors duration-200">
+                {project.name}
+              </h3>
+              <p className="text-[11.5px] text-muted-foreground mt-0.5 font-medium">{project.client}</p>
+            </div>
+          </div>
+          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10.5px] font-bold shrink-0 border ${sc.bg} ${sc.text} ${sc.border}`}>
+            <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
+            {project.status}
+          </span>
+        </div>
+
+        {/* Progress */}
+        <div className="mb-3">
+          <div className="flex justify-between text-[11px] mb-1.5 font-semibold">
+            <span className="text-muted-foreground">Completion</span>
+            <span className="text-foreground font-black">{project.progress}%</span>
+          </div>
+          <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+            <div
+              className={`h-full ${barColor} rounded-full transition-all duration-700`}
+              style={{ width: `${project.progress}%` }}
+            />
+          </div>
+        </div>
+
+        {/* Structure chips */}
+        {(units > 0 || sections) && (
+          <div className="flex items-center gap-1.5 mb-4 flex-wrap">
+            {sections && sections.count > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-secondary border border-border rounded-md text-muted-foreground">
+                <Layers size={9} />
+                {sections.count} {sections.label}
+              </span>
+            )}
+            {units > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-primary/8 border border-primary/15 rounded-md text-primary">
+                <Building2 size={9} />
+                {units} units
+              </span>
+            )}
+            {project.scopes && project.scopes.length > 0 && (
+              <span className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 bg-emerald-500/8 border border-emerald-500/15 rounded-md text-emerald-600 dark:text-emerald-400">
+                <BarChart3 size={9} />
+                {project.scopes.length} scopes
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Footer meta */}
+        <div className="pt-3 border-t border-border mt-auto grid grid-cols-2 gap-2 text-[11px] text-muted-foreground">
+          {project.location && (
+            <div className="flex items-center gap-1.5">
+              <MapPin size={11} className="opacity-50 shrink-0" />
+              <span className="truncate">{project.location}</span>
+            </div>
+          )}
+          {project.endDate && (
+            <div className="flex items-center gap-1.5">
+              <Calendar size={11} className="opacity-50 shrink-0" />
+              <span className="truncate">Due {project.endDate}</span>
+            </div>
+          )}
+          {project.pm && (
+            <div className="flex items-center gap-1.5 col-span-2 mt-1 pt-2 border-t border-border/40">
+              <User size={11} className="opacity-50 shrink-0" />
+              <span>PM: <strong className="text-foreground font-semibold">{project.pm}</strong></span>
+            </div>
+          )}
+        </div>
+
+        {/* View indicator */}
+        <div className="flex items-center justify-end mt-2 pt-1.5">
+          <span className="text-[10.5px] font-semibold text-primary/60 group-hover:text-primary flex items-center gap-0.5 transition-colors duration-200">
+            View project <ChevronRight size={11} className="group-hover:translate-x-0.5 transition-transform duration-200" />
+          </span>
+        </div>
+      </div>
+    </Link>
+  );
+}
+
 /* ─── Projects Page ───────────────────────────────────────────────── */
 export default function ProjectsPage() {
   const projects = useProjectStore((s) => s.projects);
-  const [search, setSearch]           = useState("");
+  const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter]     = useState("All");
   const [modalOpen, setModalOpen]       = useState(false);
@@ -76,65 +239,64 @@ export default function ProjectsPage() {
 
   const onTrack  = projects.filter((p) => p.status === "On Track" || p.status === "Ahead").length;
   const atRisk   = projects.filter((p) => p.status === "At Risk"  || p.status === "Delayed").length;
+  const avgProg  = projects.length
+    ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length)
+    : 0;
 
   return (
-    <div className="p-6 min-h-full">
-      {/* Metrics Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-        {[
-          {
-            label: "Total Projects",
-            value: projects.length,
-            icon: FolderKanban,
-            colorClass: "text-blue-600 bg-blue-500/10",
-          },
-          {
-            label: "On Track / Ahead",
-            value: onTrack,
-            icon: CheckCircle2,
-            colorClass: "text-status-ontrack bg-status-ontrack/10",
-          },
-          {
-            label: "At Risk / Delayed",
-            value: atRisk,
-            icon: AlertTriangle,
-            colorClass: "text-status-atrisk bg-status-atrisk/10",
-          },
-        ].map((stat, idx) => {
-          const Icon = stat.icon;
-          return (
-            <div key={idx} className="bg-card border border-border rounded-xl p-5 hover:shadow-xs transition-all duration-200 fade-up">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-[12.5px] font-semibold text-muted-foreground">{stat.label}</span>
-                <div className={`w-8.5 h-8.5 rounded-lg flex items-center justify-center ${stat.colorClass}`}>
-                  <Icon size={16} />
-                </div>
-              </div>
-              <p className="text-xl font-extrabold text-foreground leading-none">{stat.value}</p>
-            </div>
-          );
-        })}
+    <div className="p-6 min-h-full space-y-6">
+
+      {/* ── Metrics Row ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <MetricCard
+          label="Total Projects"
+          value={projects.length}
+          icon={FolderKanban}
+          colorClass="text-blue-600 bg-blue-500/10"
+          sub={`${filteredProjects.length} shown`}
+        />
+        <MetricCard
+          label="On Track / Ahead"
+          value={onTrack}
+          icon={CheckCircle2}
+          colorClass="text-status-ontrack bg-status-ontrack/10"
+          sub={`${projects.length > 0 ? Math.round((onTrack / projects.length) * 100) : 0}% of portfolio`}
+        />
+        <MetricCard
+          label="At Risk / Delayed"
+          value={atRisk}
+          icon={AlertTriangle}
+          colorClass="text-status-atrisk bg-status-atrisk/10"
+          sub="Needs attention"
+        />
+        <MetricCard
+          label="Avg. Progress"
+          value={`${avgProg}%`}
+          icon={TrendingUp}
+          colorClass="text-primary bg-primary/10"
+          sub="Across all projects"
+        />
       </div>
 
-      {/* Filter and Action Header */}
-      <div className="bg-card border border-border rounded-xl p-4 mb-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      {/* ── Filter & Action Bar ───────────────────────────────────────── */}
+      <div className="bg-card border border-border rounded-xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
         {/* Search */}
         <div className="relative flex-1 max-w-md">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <input
             type="text"
-            placeholder="Search project name, client, PM..."
+            placeholder="Search project, client or PM..."
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-9 pr-3 py-1.5 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors"
+            className="w-full pl-9 pr-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors"
           />
         </div>
 
-        {/* Dropdowns + Add */}
-        <div className="flex flex-wrap items-center gap-3">
+        {/* Filters + Add */}
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-1.5">
             <Filter size={12} className="text-muted-foreground" />
-            <span className="text-[11.5px] text-muted-foreground font-semibold">Filters:</span>
+            <span className="text-[11.5px] text-muted-foreground font-semibold">Filter:</span>
           </div>
 
           <select
@@ -162,115 +324,58 @@ export default function ProjectsPage() {
 
           <button
             onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer ml-2"
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:bg-primary/90 transition-all shadow-sm cursor-pointer ml-1"
           >
-            <Plus size={14} /> Add Project
+            <Plus size={13} /> New Project
           </button>
         </div>
       </div>
 
-      {/* Grid of Projects */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filteredProjects.map((p) => {
-          const sc = statusConfig[p.status] || statusConfig["On Track"];
-          const units = countUnits(p);
-          const sections = countSections(p);
-          const icon = typeIcon(p.type);
-
-          return (
-            <Link
-              key={p.id}
-              href={`/projects/${p.id}`}
-              className="bg-card border border-border rounded-xl p-5 hover:shadow-md hover:border-border/80 transition-all duration-200 flex flex-col justify-between cursor-pointer"
+      {/* ── Grid of Projects ─────────────────────────────────────────── */}
+      <div>
+        {/* Results count */}
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-[11.5px] font-semibold text-muted-foreground">
+            {filteredProjects.length} project{filteredProjects.length !== 1 ? "s" : ""}
+            {(search || statusFilter !== "All" || typeFilter !== "All") && " found"}
+          </p>
+          {(search || statusFilter !== "All" || typeFilter !== "All") && (
+            <button
+              onClick={() => { setSearch(""); setStatusFilter("All"); setTypeFilter("All"); }}
+              className="text-[11px] font-semibold text-primary hover:text-primary/80 transition-colors cursor-pointer"
             >
-              <div>
-                <div className="flex items-start justify-between gap-2 mb-3">
-                  <div className="flex items-start gap-2.5 min-w-0">
-                    <span className="text-xl leading-none mt-0.5 shrink-0">{icon}</span>
-                    <div className="min-w-0">
-                      <span className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">{p.type}</span>
-                      {p.subtype && (
-                        <span className="text-[10px] text-muted-foreground ml-1.5 opacity-70">· {p.subtype}</span>
-                      )}
-                      <h3 className="text-[15px] font-bold text-foreground truncate mt-0.5">{p.name}</h3>
-                      <p className="text-[12px] text-muted-foreground mt-0.5">{p.client}</p>
-                    </div>
-                  </div>
-                  <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold shrink-0 ${sc.bgClass}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full ${sc.dotClass}`} />
-                    {p.status}
-                  </span>
-                </div>
+              Clear filters
+            </button>
+          )}
+        </div>
 
-                {/* Progress bar */}
-                <div className="mb-4 mt-4">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="font-semibold text-foreground">Completion</span>
-                    <span className="font-bold text-primary">{p.progress}%</span>
-                  </div>
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-primary rounded-full transition-all duration-500"
-                      style={{ width: `${p.progress}%` }}
-                    />
-                  </div>
-                </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {filteredProjects.map((p, i) => (
+            <div key={p.id} className={`fade-up du-${Math.min(i + 1, 9)}`}>
+              <ProjectCard project={p} />
+            </div>
+          ))}
 
-                {/* Structure summary chips */}
-                {(units > 0 || sections) && (
-                  <div className="flex items-center gap-2 mb-3 flex-wrap">
-                    {sections && sections.count > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 bg-secondary border border-border rounded-md text-muted-foreground">
-                        <Layers size={10} />
-                        {sections.count} {sections.label}
-                      </span>
-                    )}
-                    {units > 0 && (
-                      <span className="inline-flex items-center gap-1 text-[10.5px] font-semibold px-2 py-0.5 bg-primary/8 border border-primary/15 rounded-md text-primary">
-                        <Building2 size={10} />
-                        {units} units
-                      </span>
-                    )}
-                  </div>
-                )}
-              </div>
-
-              {/* Card Footer */}
-              <div className="pt-3 border-t border-border mt-3 grid grid-cols-2 gap-2 text-[11.5px] text-muted-foreground">
-                {p.location && (
-                  <div className="flex items-center gap-1.5">
-                    <MapPin size={12} className="opacity-60" />
-                    <span className="truncate">{p.location}</span>
-                  </div>
-                )}
-                {p.endDate && (
-                  <div className="flex items-center gap-1.5">
-                    <Calendar size={12} className="opacity-60" />
-                    <span className="truncate">Due {p.endDate}</span>
-                  </div>
-                )}
-                {p.pm && (
-                  <div className="flex items-center gap-1.5 col-span-2 mt-1 pt-1 border-t border-border/40">
-                    <User size={12} className="opacity-60" />
-                    <span>PM: <strong className="text-foreground">{p.pm}</strong></span>
-                  </div>
-                )}
-              </div>
-            </Link>
-          );
-        })}
-
-        {filteredProjects.length === 0 && (
-          <div className="col-span-full py-16 text-center bg-card border border-border rounded-xl">
-            <span className="text-4xl block mb-3">🏗️</span>
-            <p className="text-sm font-semibold text-foreground mb-1">No projects found</p>
-            <p className="text-xs text-muted-foreground">
-              {search || statusFilter !== "All" || typeFilter !== "All"
-                ? "Try adjusting your filters"
-                : "Click \"Add Project\" to create your first project"}
-            </p>
-          </div>
-        )}
+          {filteredProjects.length === 0 && (
+            <div className="col-span-full py-20 text-center bg-card border border-dashed border-border rounded-xl">
+              <span className="text-4xl block mb-3">🏗️</span>
+              <p className="text-sm font-bold text-foreground mb-1">No projects found</p>
+              <p className="text-xs text-muted-foreground mb-4">
+                {search || statusFilter !== "All" || typeFilter !== "All"
+                  ? "Try adjusting your filters"
+                  : "Click \"New Project\" to create your first project"}
+              </p>
+              {!search && statusFilter === "All" && typeFilter === "All" && (
+                <button
+                  onClick={() => setModalOpen(true)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:bg-primary/90 transition-all cursor-pointer"
+                >
+                  <Plus size={13} /> Create Project
+                </button>
+              )}
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Add Project Modal */}
