@@ -12,6 +12,8 @@ import useAssignmentStore from "@/store/useAssignmentStore";
 import useProgressStore from "@/store/useProgressStore";
 import useProjectStore from "@/store/useProjectStore";
 import { formatNumber } from "@/lib/utils";
+import useUserStore from "@/store/useUserStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const pct = (done, total) => (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
 
@@ -43,8 +45,11 @@ function ProgressBar({ value, size = "md" }) {
 }
 
 export default function ContractorProjectDetail({ contractor, projectGroup, onBack, onBackToDirectory }) {
+  const currency = useCurrency();
   const allAssignments = useAssignmentStore((s) => s.assignments);
   const allLogs = useProgressStore((s) => s.logs);
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const addLog = useProgressStore((s) => s.addLog);
   const deductions = useContractorStore((s) => s.deductions);
   const payments = useContractorStore((s) => s.payments);
@@ -128,7 +133,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
 
   const handleSavePayment = () => {
     if (!paymentForm.amount || !paymentForm.project) return;
-    addPayment({ subcontractor: contractor.name, ...paymentForm, amount: Number(paymentForm.amount), status: "Pending Approval" });
+    addPayment({ subcontractor: contractor.name, ...paymentForm, amount: Number(paymentForm.amount), status: "Cleared" });
     setShowPaymentModal(false);
   };
 
@@ -161,6 +166,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
     { id: "logs", label: "Progress Log", icon: Activity, count: projectLogs.length },
     { id: "deductions", label: "Deductions", icon: ShieldAlert, count: projectDeductions.length },
     { id: "payments", label: "Payments", icon: CreditCard, count: projectPayments.length },
+    { id: "payable", label: "Net Payable & Reconciliation", icon: DollarSign },
   ];
 
   const selectedAsnForProgress = enrichedScopes.find((a) => a.id === progressForm.assignmentId);
@@ -205,20 +211,22 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <button onClick={() => setShowProgressModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 rounded-xl cursor-pointer transition-all">
-              <Activity size={13} /> Add Progress
-            </button>
-            <button onClick={() => setShowDeductionModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl cursor-pointer transition-all">
-              <TrendingDown size={13} /> Log Deduction
-            </button>
-            <button onClick={() => setShowPaymentModal(true)}
-              className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 cursor-pointer transition-all">
-              <CreditCard size={13} /> Disburse Payment
-            </button>
-          </div>
+          {!isReadOnly && (
+            <div className="flex items-center gap-2 flex-wrap">
+              <button onClick={() => setShowProgressModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-blue-600/10 hover:bg-blue-600/20 text-blue-600 dark:text-blue-400 rounded-xl cursor-pointer transition-all">
+                <Activity size={13} /> Add Progress
+              </button>
+              <button onClick={() => setShowDeductionModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 dark:text-rose-400 rounded-xl cursor-pointer transition-all">
+                <TrendingDown size={13} /> Log Deduction
+              </button>
+              <button onClick={() => setShowPaymentModal(true)}
+                className="flex items-center gap-1.5 px-4 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 cursor-pointer transition-all">
+                <CreditCard size={13} /> Disburse Payment
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Overall progress */}
@@ -241,12 +249,12 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
       {/* Financial KPI cards */}
       <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
         {[
-          { label: "Contract Value", value: `SAR ${formatNumber(totalContractVal)}`, sub: `${enrichedScopes.length} scopes`, cls: "text-blue-600 bg-blue-500/10", icon: Layers },
-          { label: "Total Earned", value: `SAR ${formatNumber(totalEarnedVal)}`, sub: `${overallPct}% done`, cls: "text-emerald-600 bg-emerald-500/10", icon: CheckCircle2 },
-          { label: "Pending Receivable", value: `SAR ${formatNumber(Math.max(0, totalContractVal - totalEarnedVal))}`, sub: "remaining work", cls: "text-slate-600 bg-slate-500/10", icon: Clock },
-          { label: "Deductions", value: `SAR ${formatNumber(totalDeductions)}`, sub: `${projectDeductions.length} entries`, cls: "text-rose-600 bg-rose-500/10", icon: ShieldAlert },
-          { label: "Disbursed", value: `SAR ${formatNumber(totalPaid)}`, sub: "cleared payments", cls: "text-purple-600 bg-purple-500/10", icon: CreditCard },
-          { label: "Net Payable", value: `SAR ${formatNumber(netPayable)}`, sub: "outstanding", cls: "text-amber-600 bg-amber-500/10", icon: DollarSign, highlight: true },
+          { label: "Contract Value", value: `${currency} ${formatNumber(totalContractVal)}`, sub: `${enrichedScopes.length} scopes`, cls: "text-blue-600 bg-blue-500/10", icon: Layers },
+          { label: "Total Earned", value: `${currency} ${formatNumber(totalEarnedVal)}`, sub: `${overallPct}% done`, cls: "text-emerald-600 bg-emerald-500/10", icon: CheckCircle2 },
+          { label: "Pending Receivable", value: `${currency} ${formatNumber(Math.max(0, totalContractVal - totalEarnedVal))}`, sub: "remaining work", cls: "text-slate-600 bg-slate-500/10", icon: Clock },
+          { label: "Deductions", value: `${currency} ${formatNumber(totalDeductions)}`, sub: `${projectDeductions.length} entries`, cls: "text-rose-600 bg-rose-500/10", icon: ShieldAlert },
+          { label: "Disbursed", value: `${currency} ${formatNumber(totalPaid)}`, sub: "cleared payments", cls: "text-purple-600 bg-purple-500/10", icon: CreditCard },
+          { label: "Net Payable", value: `${currency} ${formatNumber(netPayable)}`, sub: "outstanding", cls: "text-amber-600 bg-amber-500/10", icon: DollarSign, highlight: true },
         ].map((card, i) => {
           const Icon = card.icon;
           return (
@@ -275,9 +283,11 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                 ${active ? "border-primary text-primary" : "border-transparent text-muted-foreground hover:text-foreground"}`}
             >
               <Icon size={13} /> {tab.label}
-              <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                {tab.count}
-              </span>
+              {tab.count !== undefined && (
+                <span className={`text-[9.5px] font-bold px-1.5 py-0.5 rounded-full ${active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
+                  {tab.count}
+                </span>
+              )}
             </button>
           );
         })}
@@ -320,7 +330,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                     <div className="grid grid-cols-3 lg:grid-cols-6 gap-3 text-[10px]">
                       <div className="text-center">
                         <p className="text-muted-foreground font-bold uppercase tracking-wide mb-0.5">Sub Rate</p>
-                        <p className="font-black text-foreground">SAR {formatNumber(a.subRate)}</p>
+                        <p className="font-black text-foreground">{currency} {formatNumber(a.subRate)}</p>
                         {a.clientRate > 0 && <p className="text-emerald-500 font-semibold">+{formatNumber(margin)}</p>}
                       </div>
                       <div className="text-center">
@@ -330,11 +340,11 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                       </div>
                       <div className="text-center">
                         <p className="text-muted-foreground font-bold uppercase tracking-wide mb-0.5">Contract</p>
-                        <p className="font-black text-foreground">SAR {formatNumber(a.contractVal)}</p>
+                        <p className="font-black text-foreground">{currency} {formatNumber(a.contractVal)}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-muted-foreground font-bold uppercase tracking-wide mb-0.5">Earned</p>
-                        <p className="font-black text-emerald-600 dark:text-emerald-400">SAR {formatNumber(a.earnedVal)}</p>
+                        <p className="font-black text-emerald-600 dark:text-emerald-400">{currency} {formatNumber(a.earnedVal)}</p>
                       </div>
                       <div className="text-center">
                         <p className="text-muted-foreground font-bold uppercase tracking-wide mb-0.5">Target</p>
@@ -466,10 +476,10 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                       {/* Financial summary per scope */}
                       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
                         {[
-                          { label: "Contract Value", value: `SAR ${formatNumber(a.contractVal)}`, cls: "text-blue-600" },
-                          { label: "Earned (Sub Rate)", value: `SAR ${formatNumber(a.earnedVal)}`, cls: "text-emerald-600 dark:text-emerald-400" },
-                          { label: "Pending Receivable", value: `SAR ${formatNumber(Math.max(0, a.contractVal - a.earnedVal))}`, cls: "text-amber-600" },
-                          { label: "Margin / Unit", value: a.clientRate > 0 ? `SAR ${formatNumber(margin)} / ${a.uom}` : "—", cls: "text-purple-600" },
+                          { label: "Contract Value", value: `${currency} ${formatNumber(a.contractVal)}`, cls: "text-blue-600" },
+                          { label: "Earned (Sub Rate)", value: `${currency} ${formatNumber(a.earnedVal)}`, cls: "text-emerald-600 dark:text-emerald-400" },
+                          { label: "Pending Receivable", value: `${currency} ${formatNumber(Math.max(0, a.contractVal - a.earnedVal))}`, cls: "text-amber-600" },
+                          { label: "Margin / Unit", value: a.clientRate > 0 ? `${currency} ${formatNumber(margin)} / ${a.uom}` : "—", cls: "text-purple-600" },
                         ].map((f, fi) => (
                           <div key={fi} className="bg-muted/20 rounded-xl p-2.5 border border-border/40">
                             <p className="text-[9px] uppercase font-bold text-muted-foreground">{f.label}</p>
@@ -489,19 +499,19 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
             <div className="bg-muted/30 border border-border rounded-2xl p-4 grid grid-cols-2 lg:grid-cols-4 gap-4">
               <div>
                 <p className="text-[9px] uppercase font-bold text-muted-foreground">Total Contract</p>
-                <p className="text-base font-black text-foreground">SAR {formatNumber(totalContractVal)}</p>
+                <p className="text-base font-black text-foreground">{currency} {formatNumber(totalContractVal)}</p>
               </div>
               <div>
                 <p className="text-[9px] uppercase font-bold text-muted-foreground">Total Earned</p>
-                <p className="text-base font-black text-emerald-600 dark:text-emerald-400">SAR {formatNumber(totalEarnedVal)}</p>
+                <p className="text-base font-black text-emerald-600 dark:text-emerald-400">{currency} {formatNumber(totalEarnedVal)}</p>
               </div>
               <div>
                 <p className="text-[9px] uppercase font-bold text-muted-foreground">Total Deductions</p>
-                <p className="text-base font-black text-rose-600">SAR {formatNumber(totalDeductions)}</p>
+                <p className="text-base font-black text-rose-600">{currency} {formatNumber(totalDeductions)}</p>
               </div>
               <div>
                 <p className="text-[9px] uppercase font-bold text-muted-foreground">Net Payable</p>
-                <p className="text-base font-black text-amber-600 dark:text-amber-400">SAR {formatNumber(netPayable)}</p>
+                <p className="text-base font-black text-amber-600 dark:text-amber-400">{currency} {formatNumber(netPayable)}</p>
               </div>
             </div>
           )}
@@ -534,7 +544,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                     <span className="text-muted-foreground font-medium">{log.unitId || log.phaseId || "Project-wide"}</span>
                     <span className="text-muted-foreground">{log.date}</span>
                     <span className="font-black text-primary">{formatNumber(log.qtyCompleted)} {log.uom}</span>
-                    <span className="font-black text-emerald-600 dark:text-emerald-400">SAR {formatNumber(log.amountEarned)}</span>
+                    <span className="font-black text-emerald-600 dark:text-emerald-400">{currency} {formatNumber(log.amountEarned)}</span>
                     <div>
                       <p className="font-semibold text-foreground">{log.signedBy || "—"}</p>
                       {log.notes && <p className="text-[10px] text-muted-foreground truncate max-w-[200px]" title={log.notes}>{log.notes}</p>}
@@ -571,7 +581,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                 projectDeductions.map((d, i) => (
                   <div key={d.id} className={`grid grid-cols-[1fr_1.2fr_1.5fr_1fr_1.5fr_2fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < projectDeductions.length - 1 ? "border-b border-border/40" : ""}`}>
                     <span className="font-bold text-muted-foreground">{d.id}</span>
-                    <span className="font-black text-rose-500">SAR {formatNumber(d.amount)}</span>
+                    <span className="font-black text-rose-500">{currency} {formatNumber(d.amount)}</span>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold ${deductionStyles[d.category] || ""}`}>{d.category}</span>
                     <span className="text-muted-foreground">{d.date}</span>
                     <span className="font-medium text-foreground">{d.approvedBy}</span>
@@ -582,7 +592,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               {projectDeductions.length > 0 && (
                 <div className="px-5 py-3 bg-rose-500/5 border-t border-rose-500/20 flex items-center justify-between">
                   <span className="text-xs font-bold text-rose-600">Total Deductions on this Project</span>
-                  <span className="text-sm font-black text-rose-600">SAR {formatNumber(totalDeductions)}</span>
+                  <span className="text-sm font-black text-rose-600">{currency} {formatNumber(totalDeductions)}</span>
                 </div>
               )}
             </div>
@@ -608,7 +618,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                 projectPayments.map((p, i) => (
                   <div key={p.id} className={`grid grid-cols-[1fr_1.2fr_1fr_1.5fr_1.2fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < projectPayments.length - 1 ? "border-b border-border/40" : ""}`}>
                     <span className="font-bold text-muted-foreground">{p.id}</span>
-                    <span className="font-black text-foreground">SAR {formatNumber(p.amount)}</span>
+                    <span className="font-black text-foreground">{currency} {formatNumber(p.amount)}</span>
                     <span className="text-muted-foreground">{p.date}</span>
                     <span className="font-medium text-foreground">{p.channel}</span>
                     <div className="text-right">
@@ -623,14 +633,251 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                 <div className="px-5 py-3 bg-emerald-500/5 border-t border-emerald-500/20 grid grid-cols-2 gap-4">
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-muted-foreground">Total Disbursed (Cleared)</span>
-                    <span className="text-sm font-black text-emerald-600">SAR {formatNumber(totalPaid)}</span>
+                    <span className="text-sm font-black text-emerald-600">{currency} {formatNumber(totalPaid)}</span>
                   </div>
                   <div className="flex items-center justify-between">
                     <span className="text-xs font-bold text-muted-foreground">Net Payable Balance</span>
-                    <span className="text-sm font-black text-amber-600">SAR {formatNumber(netPayable)}</span>
+                    <span className="text-sm font-black text-amber-600">{currency} {formatNumber(netPayable)}</span>
                   </div>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === "payable" && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          {/* Reconciliation Flow Card */}
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm grid grid-cols-1 md:grid-cols-7 gap-4 items-center relative overflow-hidden">
+            <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -z-10" />
+            
+            <div className="md:col-span-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Project Scope Earnings</span>
+              <h4 className="text-base font-black text-emerald-600 dark:text-emerald-400 mt-1">{currency} {formatNumber(totalEarnedVal)}</h4>
+              <p className="text-[9px] text-muted-foreground mt-0.5">Based on progress on this project</p>
+            </div>
+            
+            <div className="flex items-center justify-center text-muted-foreground text-sm font-bold">
+              <span>−</span>
+            </div>
+            
+            <div className="md:col-span-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Project Deductions</span>
+              <h4 className="text-base font-black text-rose-600 dark:text-rose-400 mt-1">{currency} {formatNumber(totalDeductions)}</h4>
+              <p className="text-[9px] text-muted-foreground mt-0.5">Penalties, advances & damage logs</p>
+            </div>
+            
+            <div className="flex items-center justify-center text-muted-foreground text-sm font-bold">
+              <span>−</span>
+            </div>
+            
+            <div className="md:col-span-2">
+              <span className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Payments Received</span>
+              <h4 className="text-base font-black text-purple-600 dark:text-purple-400 mt-1">{currency} {formatNumber(totalPaid)}</h4>
+              <p className="text-[9px] text-muted-foreground mt-0.5">Cleared project disbursements</p>
+            </div>
+            
+            <div className="md:col-span-7 border-t border-border/50 my-1 hidden md:block"></div>
+            
+            <div className="md:col-span-7 bg-primary/5 dark:bg-primary/10 border border-primary/20 rounded-xl p-3 flex justify-between items-center">
+              <div>
+                <span className="text-[10px] font-bold text-primary uppercase tracking-wider">Project Net Subcontract Outstanding Receivable</span>
+                <p className="text-[9px] text-muted-foreground mt-0.5">Outstanding balance to be released for this project</p>
+              </div>
+              <div className="text-right">
+                <h4 className="text-lg font-black text-primary">{currency} {formatNumber(netPayable)}</h4>
+              </div>
+            </div>
+          </div>
+
+          {/* Section 1: Scopes & Earned Values */}
+          <div className="bg-card border border-border rounded-2xl overflow-hidden">
+            <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
+              <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                <Layers size={14} className="text-primary" />
+                Project Scopes & Progress Earnings
+              </h4>
+              <span className="text-[10px] font-bold bg-primary/10 text-primary px-2 py-0.5 rounded-full">
+                {enrichedScopes.length} Assigned Scope{enrichedScopes.length !== 1 ? 's' : ''}
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="border-b border-border bg-muted/10 text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                    <th className="py-3 px-4">Scope / Trade</th>
+                    <th className="py-3 px-4 text-center">Progress</th>
+                    <th className="py-3 px-4 text-right">Quantity Breakdown</th>
+                    <th className="py-3 px-4 text-right">Unit Rate</th>
+                    <th className="py-3 px-4 text-right">Contract Value</th>
+                    <th className="py-3 px-4 text-right">Earned Value</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border/60 text-xs font-medium">
+                  {enrichedScopes.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="py-8 text-center text-muted-foreground">
+                        No scopes assigned to this project.
+                      </td>
+                    </tr>
+                  ) : (
+                    enrichedScopes.map((a) => (
+                      <tr key={a.id} className="hover:bg-muted/20 transition-colors">
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm">{a.tradeIcon || "📁"}</span>
+                            <div>
+                              <p className="font-bold text-foreground">{a.scopeName}</p>
+                              <p className="text-[10px] text-muted-foreground">ID: {a.id}</p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col items-center gap-1">
+                            <span className="font-bold text-foreground">{a.progressPct}%</span>
+                            <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className="h-full bg-emerald-500 rounded-full"
+                                style={{ width: `${a.progressPct}%` }}
+                              />
+                            </div>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono">
+                          <span className="text-foreground">{formatNumber(a.doneQty)}</span>
+                          <span className="text-muted-foreground"> / {formatNumber(a.totalQty)}</span>
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-muted-foreground">
+                          {currency} {formatNumber(a.subRate)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono text-muted-foreground">
+                          {currency} {formatNumber(a.contractVal)}
+                        </td>
+                        <td className="py-3 px-4 text-right font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                          {currency} {formatNumber(a.earnedVal)}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Two-column layout for Deductions and Payments */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Deductions Ledger */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
+                <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <TrendingDown size={14} className="text-rose-500" />
+                  Project Deductions Ledger
+                </h4>
+                <span className="text-[10px] font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 px-2 py-0.5 rounded-full">
+                  {currency} {formatNumber(totalDeductions)}
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/10 text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Category</th>
+                      <th className="py-3 px-4 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-xs font-medium">
+                    {projectDeductions.length === 0 ? (
+                      <tr>
+                        <td colSpan={3} className="py-8 text-center text-muted-foreground">
+                          No deductions logged.
+                        </td>
+                      </tr>
+                    ) : (
+                      projectDeductions.map((d) => (
+                        <tr key={d.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="py-3 px-4 text-muted-foreground font-mono text-[11px]">
+                            {d.date}
+                          </td>
+                          <td className="py-3 px-4">
+                            <div>
+                              <span className="text-[10px] px-1.5 py-0.5 rounded-md font-bold bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20">
+                                {d.category}
+                              </span>
+                              {d.description && (
+                                <p className="text-[10px] text-muted-foreground mt-0.5 line-clamp-1">{d.description}</p>
+                              )}
+                            </div>
+                          </td>
+                          <td className="py-3 px-4 text-right font-mono font-bold text-rose-600 dark:text-rose-400">
+                            {currency} {formatNumber(d.amount)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Disbursed Payments Ledger */}
+            <div className="bg-card border border-border rounded-2xl overflow-hidden">
+              <div className="p-4 border-b border-border bg-muted/20 flex items-center justify-between">
+                <h4 className="text-xs font-bold text-foreground flex items-center gap-1.5">
+                  <CreditCard size={14} className="text-purple-500" />
+                  Project Payments Ledger
+                </h4>
+                <span className="text-[10px] font-bold bg-purple-500/10 text-purple-600 dark:text-purple-400 px-2 py-0.5 rounded-full">
+                  {currency} {formatNumber(totalPaid)} Cleared
+                </span>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="border-b border-border bg-muted/10 text-[9px] font-bold text-muted-foreground uppercase tracking-wider">
+                      <th className="py-3 px-4">Date</th>
+                      <th className="py-3 px-4">Method / Channel</th>
+                      <th className="py-3 px-4 text-center">Status</th>
+                      <th className="py-3 px-4 text-right">Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border/60 text-xs font-medium">
+                    {projectPayments.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-8 text-center text-muted-foreground">
+                          No payment history.
+                        </td>
+                      </tr>
+                    ) : (
+                      projectPayments.map((p) => (
+                        <tr key={p.id} className="hover:bg-muted/20 transition-colors">
+                          <td className="py-3 px-4 text-muted-foreground font-mono text-[11px]">
+                            {p.date}
+                          </td>
+                          <td className="py-3 px-4 text-muted-foreground text-[11px]">
+                            {p.channel}
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              p.status === "Cleared" 
+                                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20" 
+                                : "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20"
+                            }`}>
+                              {p.status}
+                            </span>
+                          </td>
+                          <td className={`py-3 px-4 text-right font-mono font-bold ${
+                            p.status === "Cleared" ? "text-purple-600 dark:text-purple-400" : "text-muted-foreground"
+                          }`}>
+                            {currency} {formatNumber(p.amount)}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         </div>
@@ -702,7 +949,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               {progressForm.qtyCompleted && selectedAsnForProgress && (
                 <div className="p-2.5 bg-emerald-500/5 rounded-xl border border-emerald-500/20 text-xs">
                   <span className="text-muted-foreground">Amount Earned: </span>
-                  <span className="font-black text-emerald-600">SAR {formatNumber(Number(progressForm.qtyCompleted) * (selectedAsnForProgress.subRate || 0))}</span>
+                  <span className="font-black text-emerald-600">{currency} {formatNumber(Number(progressForm.qtyCompleted) * (selectedAsnForProgress.subRate || 0))}</span>
                 </div>
               )}
             </div>
@@ -728,7 +975,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground">Amount (SAR)</label>
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground">Amount ({currency})</label>
                   <input type="number" value={deductionForm.amount} onChange={(e) => setDeductionForm({ ...deductionForm, amount: e.target.value })}
                     placeholder="e.g. 1500" className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-xl border border-border outline-none font-bold" />
                 </div>
@@ -779,13 +1026,13 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
             </div>
             <div className="space-y-3">
               <div>
-                <label className="text-[10px] uppercase font-bold text-muted-foreground">Payment Amount (SAR)</label>
+                <label className="text-[10px] uppercase font-bold text-muted-foreground">Payment Amount ({currency})</label>
                 <input type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                   placeholder="e.g. 50000" className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-xl border border-border outline-none font-bold" />
               </div>
               <div className="p-3 bg-muted/30 rounded-xl border border-border/50 text-xs">
                 <p className="text-muted-foreground">Project: <span className="font-bold text-foreground">{paymentForm.project}</span></p>
-                <p className="text-muted-foreground mt-0.5">Net Outstanding: <span className="font-black text-amber-500">SAR {formatNumber(netPayable)}</span></p>
+                <p className="text-muted-foreground mt-0.5">Net Outstanding: <span className="font-black text-amber-500">{currency} {formatNumber(netPayable)}</span></p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -1,17 +1,8 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
-
-const SEED_ASSETS = [
-  { id: "AST-001", name: "Tower Crane #1 (Liebherr)", category: "Heavy Crane", projectId: "PRJ-001", operatorId: "WRK-001", expectedReturnDate: "2026-12-31", status: "In Use", notes: "" },
-  { id: "AST-002", name: "Excavator CAT 320", category: "Excavator", projectId: "PRJ-001", operatorId: "WRK-002", expectedReturnDate: "2026-06-15", status: "In Use", notes: "Needed urgently at another site after this date." }, // Overdue
-  { id: "AST-003", name: "Mobile Lift Crane", category: "Heavy Crane", projectId: "", operatorId: "WRK-003", expectedReturnDate: "", status: "Idle", notes: "" },
-  { id: "AST-004", name: "Generator Unit 100kVA", category: "Power Utility", projectId: "PRJ-002", operatorId: "", expectedReturnDate: "2026-08-20", status: "In Use", notes: "" },
-  { id: "AST-005", name: "Scaffolding Set C-4", category: "Scaffolding", projectId: "PRJ-001", operatorId: "", expectedReturnDate: "2026-09-30", status: "In Use", notes: "" },
-  { id: "AST-006", name: "Tipper Truck #3", category: "Vehicle", projectId: "", operatorId: "WRK-004", expectedReturnDate: "", status: "Under Maintenance", notes: "Engine overhaul" },
-  { id: "AST-007", name: "Excavator Volvo 210", category: "Excavator", projectId: "", operatorId: "", expectedReturnDate: "", status: "Idle", notes: "" }
-];
+import axios from "axios";
+import { toast } from "react-hot-toast";
 
 export const ASSET_CATEGORIES = [
   "Heavy Crane", "Excavator", "Power Utility", "Scaffolding", "Vehicle", "Tools", "Other"
@@ -21,39 +12,83 @@ export const ASSET_STATUSES = [
   "In Use", "Idle", "Inspection Due", "Under Maintenance"
 ];
 
-const useAssetStore = create(
-  persist(
-    (set, get) => ({
-      assets: SEED_ASSETS,
+const useAssetStore = create((set, get) => ({
+  assets: [],
+  loading: false,
+  loaded: false,
 
-      addAsset: (assetData) => set((state) => {
-        const counts = state.assets.map(a => parseInt(a.id.replace("AST-", "")) || 0);
-        const maxId = counts.length > 0 ? Math.max(...counts) : 0;
-        const newId = `AST-${String(maxId + 1).padStart(3, "0")}`;
-
-        const newAsset = {
-          id: newId,
-          ...assetData,
-          createdAt: new Date().toISOString(),
-        };
-
-        return { assets: [newAsset, ...state.assets] };
-      }),
-
-      updateAsset: (id, updates) => set((state) => ({
-        assets: state.assets.map((a) => (a.id === id ? { ...a, ...updates, updatedAt: new Date().toISOString() } : a)),
-      })),
-
-      deleteAsset: (id) => set((state) => ({
-        assets: state.assets.filter((a) => a.id !== id),
-      })),
-
-      getAssetsByProject: (projectId) => get().assets.filter(a => a.projectId === projectId),
-    }),
-    {
-      name: "buildtrack-asset-storage-v2", // changed name so it resets the persist state for the new schema
+  fetchAssetData: async () => {
+    if (get().loaded) return;
+    set({ loading: true });
+    try {
+      const response = await axios.get("/api/assets");
+      set({ assets: response.data, loaded: true });
+    } catch (error) {
+      console.error("fetchAssetData error:", error);
+      toast.error("Failed to load asset registry");
+    } finally {
+      set({ loading: false });
     }
-  )
-);
+  },
+
+  addAsset: async (assetData) => {
+    set({ loading: true });
+    try {
+      const response = await axios.post("/api/assets", assetData);
+      const newItem = response.data;
+      set((state) => ({ assets: [newItem, ...state.assets] }));
+      toast.success("Asset registered successfully");
+      return newItem;
+    } catch (error) {
+      console.error("addAsset error:", error);
+      const errMsg = error.response?.data?.error || "Failed to register asset";
+      toast.error(errMsg);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  updateAsset: async (id, updates) => {
+    set({ loading: true });
+    try {
+      const response = await axios.put(`/api/assets/${id}`, updates);
+      const updatedItem = response.data;
+      set((state) => ({
+        assets: state.assets.map((a) => (a.id === id ? updatedItem : a)),
+      }));
+      toast.success("Asset details updated");
+      return updatedItem;
+    } catch (error) {
+      console.error("updateAsset error:", error);
+      const errMsg = error.response?.data?.error || "Failed to update asset";
+      toast.error(errMsg);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  deleteAsset: async (id) => {
+    set({ loading: true });
+    try {
+      await axios.delete(`/api/assets/${id}`);
+      set((state) => ({
+        assets: state.assets.filter((a) => a.id !== id),
+      }));
+      toast.success("Asset removed from registry");
+    } catch (error) {
+      console.error("deleteAsset error:", error);
+      toast.error("Failed to delete asset");
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  getAssetsByProject: (projectId) => {
+    return get().assets.filter((a) => a.projectId === projectId);
+  },
+}));
 
 export default useAssetStore;

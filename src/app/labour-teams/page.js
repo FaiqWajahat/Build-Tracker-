@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Users, Plus, Search, Filter, ChevronRight, MoreHorizontal,
   UserCheck, UserX, Clock, TrendingUp, DollarSign, IdCard,
@@ -11,7 +11,11 @@ import {
 } from "lucide-react";
 import useLabourStore from "@/store/useLabourStore";
 import useProjectStore from "@/store/useProjectStore";
+import useUserStore from "@/store/useUserStore";
 import Link from "next/link";
+import Loader from "@/components/ui/Loader";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import useSettingsStore from "@/store/useSettingsStore";
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 const TRADES = [
@@ -40,7 +44,8 @@ function initials(name) {
 }
 
 function fmtCurrency(n) {
-  return "SAR " + Number(n || 0).toLocaleString("en-SA", { maximumFractionDigits: 0 });
+  const currency = useSettingsStore.getState().settings.currency || "SAR";
+  return currency + " " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 });
 }
 
 function daysUntilExpiry(dateStr) {
@@ -230,7 +235,7 @@ function AddWorkerModal({ onClose, onSave, editWorker }) {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-foreground mb-1.5">
-                  Rate (SAR / {form.payType === "monthly" ? "month" : "day"}) *
+                  Rate ({useSettingsStore.getState().settings.currency || "SAR"} / {form.payType === "monthly" ? "month" : "day"}) *
                 </label>
                 <input
                   type="number"
@@ -299,7 +304,7 @@ function AddWorkerModal({ onClose, onSave, editWorker }) {
 }
 
 /* ─── Worker Card ───────────────────────────────────────────────────────── */
-function WorkerCard({ worker, onEdit, onDelete, onClick }) {
+function WorkerCard({ worker, onEdit, onDelete, onClick, isReadOnly }) {
   const { attendance, advances } = useLabourStore();
   const [showMenu, setShowMenu] = useState(false);
 
@@ -339,37 +344,39 @@ function WorkerCard({ worker, onEdit, onDelete, onClick }) {
       className="group bg-card border border-border rounded-2xl p-4 hover:shadow-lg hover:border-primary/25 transition-all duration-200 cursor-pointer relative"
       onClick={() => onClick(worker)}
     >
-      <div className="absolute top-3 right-3 z-10" onClick={(e) => e.stopPropagation()}>
-        <button
-          onClick={() => setShowMenu((s) => !s)}
-          className="p-1.5 rounded-lg hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
-        >
-          <MoreHorizontal size={14} className="text-muted-foreground" />
-        </button>
-        {showMenu && (
-          <div className="absolute right-0 top-7 bg-card border border-border rounded-xl shadow-xl py-1 min-w-[130px] z-20">
-            <button
-              onClick={() => { setShowMenu(false); onEdit(worker); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted text-foreground transition-colors"
-            >
-              <Edit2 size={12} /> Edit
-            </button>
-            <button
-              onClick={() => { setShowMenu(false); onClick(worker); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted text-foreground transition-colors"
-            >
-              <Eye size={12} /> View Profile
-            </button>
-            <div className="h-px bg-border my-1" />
-            <button
-              onClick={() => { setShowMenu(false); onDelete(worker.id); }}
-              className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-rose-500/10 text-rose-600 transition-colors"
-            >
-              <Trash2 size={12} /> Remove
-            </button>
-          </div>
-        )}
-      </div>
+      {!isReadOnly && (
+        <div className="absolute top-3 right-3 z-10" onClick={(e) => e.stopPropagation()}>
+          <button
+            onClick={() => setShowMenu((s) => !s)}
+            className="p-1.5 rounded-lg hover:bg-muted transition-colors opacity-0 group-hover:opacity-100"
+          >
+            <MoreHorizontal size={14} className="text-muted-foreground" />
+          </button>
+          {showMenu && (
+            <div className="absolute right-0 top-7 bg-card border border-border rounded-xl shadow-xl py-1 min-w-[130px] z-20">
+              <button
+                onClick={() => { setShowMenu(false); onEdit(worker); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted text-foreground transition-colors"
+              >
+                <Edit2 size={12} /> Edit
+              </button>
+              <button
+                onClick={() => { setShowMenu(false); onClick(worker); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-muted text-foreground transition-colors"
+              >
+                <Eye size={12} /> View Profile
+              </button>
+              <div className="h-px bg-border my-1" />
+              <button
+                onClick={() => { setShowMenu(false); onDelete(worker.id); }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs hover:bg-rose-500/10 text-rose-600 transition-colors"
+              >
+                <Trash2 size={12} /> Remove
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="flex items-start gap-3 mb-3">
         <WorkerAvatar worker={worker} size={44} />
@@ -488,9 +495,34 @@ function SummaryRow({ workers, attendance }) {
 export default function LabourPage() {
   const {
     workers, attendance, advances, teams,
-    addWorker, updateWorker, deleteWorker,
+    addWorker, updateWorker, deleteWorker, fetchLabourData,
+    loading, loaded
   } = useLabourStore();
   const { projects } = useProjectStore();
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
+  const currency = useSettingsStore((s) => s.settings.currency);
+
+  useEffect(() => {
+    fetchLabourData();
+  }, [fetchLabourData]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && workers.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const workerId = params.get("workerId");
+      if (workerId) {
+        const found = workers.find(w => w.id === workerId || w.display_id === workerId);
+        if (found) {
+          setSelectedWorker(found);
+        }
+      }
+      const teamId = params.get("teamId");
+      if (teamId) {
+        setActiveTab("teams");
+      }
+    }
+  }, [workers]);
 
   const [search, setSearch] = useState("");
   const [tradeFilter, setTradeFilter] = useState("All");
@@ -500,6 +532,7 @@ export default function LabourPage() {
   const [editWorker, setEditWorker] = useState(null);
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [activeTab, setActiveTab] = useState("workers");
+  const [deleteWorkerTarget, setDeleteWorkerTarget] = useState(null);
 
   const filtered = useMemo(() => {
     return workers.filter((w) => {
@@ -540,7 +573,12 @@ export default function LabourPage() {
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-background relative">
+      {loading && (
+        <Loader 
+          message={!loaded ? "Loading workforce data..." : "Saving..."} 
+        />
+      )}
       <div className="max-w-7xl mx-auto px-6 py-6">
         <div className="flex items-start justify-between mb-6">
           <div>
@@ -620,12 +658,14 @@ export default function LabourPage() {
                   <X size={12} /> Clear
                 </button>
               )}
-              <button
-                onClick={() => { setEditWorker(null); setShowAddModal(true); }}
-                className="ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm"
-              >
-                <UserPlus size={15} /> Add Worker
-              </button>
+              {!isReadOnly && (
+                <button
+                  onClick={() => { setEditWorker(null); setShowAddModal(true); }}
+                  className="ml-auto flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm"
+                >
+                  <UserPlus size={15} /> Add Worker
+                </button>
+              )}
               <span className="text-xs text-muted-foreground">
                 {filtered.length} worker{filtered.length !== 1 ? "s" : ""}
               </span>
@@ -640,7 +680,7 @@ export default function LabourPage() {
                 <p className="text-sm text-muted-foreground mb-4">
                   {workers.length === 0 ? "Add your first labour member to get started" : "Try adjusting your filters"}
                 </p>
-                {workers.length === 0 && (
+                {!isReadOnly && workers.length === 0 && (
                   <button
                     onClick={() => setShowAddModal(true)}
                     className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity"
@@ -656,15 +696,16 @@ export default function LabourPage() {
                     key={w.id}
                     worker={w}
                     onEdit={(w) => { setEditWorker(w); setShowAddModal(true); }}
-                    onDelete={deleteWorker}
+                    onDelete={(id) => setDeleteWorkerTarget(workers.find((x) => x.id === id))}
                     onClick={setSelectedWorker}
+                    isReadOnly={isReadOnly}
                   />
                 ))}
               </div>
             )}
           </>
         ) : (
-          <TeamsTab teams={teams} workers={workers} projects={projects} />
+          <TeamsTab teams={teams} workers={workers} projects={projects} isReadOnly={isReadOnly} />
         )}
       </div>
 
@@ -675,26 +716,38 @@ export default function LabourPage() {
           editWorker={editWorker}
         />
       )}
+
+      <DeleteConfirmModal
+        isOpen={!!deleteWorkerTarget}
+        onClose={() => setDeleteWorkerTarget(null)}
+        onConfirm={() => deleteWorker(deleteWorkerTarget.id)}
+        title="Delete Worker Profile"
+        description="Are you sure you want to delete this worker profile? This will also permanently delete all attendance logs and advance/expense records associated with them."
+        itemName={deleteWorkerTarget?.name}
+      />
     </div>
   );
 }
 
 /* ─── Teams Tab ─────────────────────────────────────────────────────────── */
-function TeamsTab({ teams, workers, projects }) {
+function TeamsTab({ teams, workers, projects, isReadOnly }) {
   const { addTeam, updateTeam, deleteTeam } = useLabourStore();
   const [showModal, setShowModal] = useState(false);
   const [editTeam, setEditTeam] = useState(null);
+  const [deleteTeamTarget, setDeleteTeamTarget] = useState(null);
 
   return (
     <div>
       <div className="flex justify-between items-center mb-5">
         <p className="text-sm text-muted-foreground">{teams.length} team{teams.length !== 1 ? "s" : ""} configured</p>
-        <button
-          onClick={() => { setEditTeam(null); setShowModal(true); }}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm"
-        >
-          <Plus size={15} /> New Team
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={() => { setEditTeam(null); setShowModal(true); }}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity shadow-sm"
+          >
+            <Plus size={15} /> New Team
+          </button>
+        )}
       </div>
 
       {teams.length === 0 ? (
@@ -713,7 +766,8 @@ function TeamsTab({ teams, workers, projects }) {
               team={team}
               workers={workers}
               onEdit={(t) => { setEditTeam(t); setShowModal(true); }}
-              onDelete={deleteTeam}
+              onDelete={(id) => setDeleteTeamTarget(teams.find((x) => x.id === id))}
+              isReadOnly={isReadOnly}
             />
           ))}
         </div>
@@ -733,12 +787,21 @@ function TeamsTab({ teams, workers, projects }) {
           }}
         />
       )}
+
+      <DeleteConfirmModal
+        isOpen={!!deleteTeamTarget}
+        onClose={() => setDeleteTeamTarget(null)}
+        onConfirm={() => deleteTeam(deleteTeamTarget.id)}
+        title="Delete Team"
+        description="Are you sure you want to delete this team? Workers will be unassigned from this team."
+        itemName={deleteTeamTarget?.name}
+      />
     </div>
   );
 }
 
 /* ─── Team Card ─────────────────────────────────────────────────────────── */
-function TeamCard({ team, workers, onEdit, onDelete }) {
+function TeamCard({ team, workers, onEdit, onDelete, isReadOnly }) {
   const members = team.memberIds.map((id) => workers.find((w) => w.id === id)).filter(Boolean);
   const leader = workers.find((w) => w.id === team.leaderId);
 
@@ -763,14 +826,16 @@ function TeamCard({ team, workers, onEdit, onDelete }) {
             <span>{team.projectName || "No project assigned"}</span>
           </div>
         </div>
-        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-          <button onClick={() => onEdit(team)} className="p-1.5 rounded-lg hover:bg-muted">
-            <Edit2 size={12} className="text-muted-foreground" />
-          </button>
-          <button onClick={() => onDelete(team.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10">
-            <Trash2 size={12} className="text-rose-500" />
-          </button>
-        </div>
+        {!isReadOnly && (
+          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button onClick={() => onEdit(team)} className="p-1.5 rounded-lg hover:bg-muted">
+              <Edit2 size={12} className="text-muted-foreground" />
+            </button>
+            <button onClick={() => onDelete(team.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10">
+              <Trash2 size={12} className="text-rose-500" />
+            </button>
+          </div>
+        )}
       </div>
 
       {leader && (
@@ -1048,11 +1113,19 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
     addAttendance, deleteAttendance,
     addAdvance, updateAdvance, deleteAdvance,
     calculatePayable,
+    loading, loaded
   } = useLabourStore();
 
   const [profileTab, setProfileTab] = useState("overview");
   const [showAttModal, setShowAttModal] = useState(false);
   const [showAdvModal, setShowAdvModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [payPeriod, setPayPeriod] = useState(() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
+    const end = now.toISOString().split("T")[0];
+    return { start, end };
+  });
   const [attForm, setAttForm] = useState({
     date: new Date().toISOString().split("T")[0],
     projectId: projects[0]?.id || "",
@@ -1081,18 +1154,17 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
     (t) => t.memberIds.includes(worker.id) || t.leaderId === worker.id
   );
 
-  const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split("T")[0];
-  const monthEnd = now.toISOString().split("T")[0];
-  const monthlyPayable = calculatePayable(worker.id, monthStart, monthEnd);
+  const monthlyPayable = calculatePayable(worker.id, payPeriod.start, payPeriod.end);
 
-  const totalAdvanceDeducted = workerAdvances
+  const rangeAdvances = workerAdvances.filter((a) => a.date >= payPeriod.start && a.date <= payPeriod.end);
+
+  const totalAdvanceDeducted = rangeAdvances
     .filter((a) => a.type === "advance" && a.status === "deducted")
     .reduce((s, a) => s + a.amount, 0);
-  const totalPendingAdvance = workerAdvances
+  const totalPendingAdvance = rangeAdvances
     .filter((a) => a.type === "advance" && a.status === "pending")
     .reduce((s, a) => s + a.amount, 0);
-  const totalBonus = workerAdvances
+  const totalBonus = rangeAdvances
     .filter((a) => a.type === "bonus")
     .reduce((s, a) => s + a.amount, 0);
   const netPayable = monthlyPayable - totalPendingAdvance + totalBonus;
@@ -1135,7 +1207,12 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
   }
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-background relative">
+      {loading && (
+        <Loader 
+          message={!loaded ? "Loading profile data..." : "Saving..."} 
+        />
+      )}
       <div className="max-w-5xl mx-auto px-6 py-6">
         <button
           onClick={onBack}
@@ -1337,7 +1414,7 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
                         {rec.overtime > 0 && <span className="text-amber-500"> +{rec.overtime}OT</span>}
                       </div>
                       <button
-                        onClick={() => deleteAttendance(rec.id)}
+                        onClick={() => setDeleteTarget({ type: 'attendance', id: rec.id, name: `Attendance on ${rec.date} (${rec.status})` })}
                         className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/10 transition-all"
                       >
                         <Trash2 size={11} className="text-rose-500" />
@@ -1351,12 +1428,35 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
         )}
 
         {profileTab === "payroll" && (
-          <div className="bg-card border border-border rounded-2xl p-5">
-            <h3 className="font-bold text-foreground text-sm mb-5">Current Month Payroll Summary</h3>
+          <div className="bg-card border border-border rounded-2xl p-5 shadow-sm">
+            <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 mb-5 border-b border-border pb-4">
+              <div>
+                <h3 className="font-bold text-foreground text-sm">Payroll Period Summary</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">Calculated based on attendance & transactions</p>
+              </div>
+              
+              {/* Date Period Selector */}
+              <div className="flex items-center gap-2 bg-muted/60 p-1.5 rounded-xl border border-border/60">
+                <input 
+                  type="date" 
+                  value={payPeriod.start} 
+                  onChange={(e) => setPayPeriod(prev => ({ ...prev, start: e.target.value }))}
+                  className="bg-transparent text-xs text-foreground font-semibold px-2 py-1 outline-none border-none cursor-pointer dark:[color-scheme:dark]"
+                />
+                <span className="text-[10px] text-muted-foreground font-bold font-mono">TO</span>
+                <input 
+                  type="date" 
+                  value={payPeriod.end} 
+                  onChange={(e) => setPayPeriod(prev => ({ ...prev, end: e.target.value }))}
+                  className="bg-transparent text-xs text-foreground font-semibold px-2 py-1 outline-none border-none cursor-pointer dark:[color-scheme:dark]"
+                />
+              </div>
+            </div>
+
             <div className="space-y-2">
               <PayrollRow label="Base Rate" value={fmtCurrency(worker.rate)} sub={`per ${worker.payType === "monthly" ? "month" : "day"}`} />
-              <PayrollRow label="Present Days (this month)" value={workerAtt.filter((a) => a.date >= monthStart && a.date <= monthEnd && a.status === "present").length + " days"} />
-              <PayrollRow label="Half Days (this month)" value={workerAtt.filter((a) => a.date >= monthStart && a.date <= monthEnd && a.status === "half-day").length + " days"} />
+              <PayrollRow label="Present Days (in range)" value={workerAtt.filter((a) => a.date >= payPeriod.start && a.date <= payPeriod.end && a.status === "present").length + " days"} />
+              <PayrollRow label="Half Days (in range)" value={workerAtt.filter((a) => a.date >= payPeriod.start && a.date <= payPeriod.end && a.status === "half-day").length + " days"} />
               <div className="h-px bg-border my-2" />
               <PayrollRow label="Calculated Payable" value={fmtCurrency(monthlyPayable)} highlight />
               <PayrollRow label="Bonuses" value={`+ ${fmtCurrency(totalBonus)}`} positive />
@@ -1413,7 +1513,7 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
                             Mark Deducted
                           </button>
                         )}
-                        <button onClick={() => deleteAdvance(adv.id)} className="p-1 rounded hover:bg-rose-500/10">
+                        <button onClick={() => setDeleteTarget({ type: 'advance', id: adv.id, name: `${adv.type} - ${useSettingsStore.getState().settings.currency || "SAR"} ${adv.amount} (${adv.description || 'No description'})` })} className="p-1 rounded hover:bg-rose-500/10">
                           <Trash2 size={11} className="text-rose-500" />
                         </button>
                       </div>
@@ -1543,7 +1643,7 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-semibold text-foreground mb-1.5">Amount (SAR) *</label>
+                  <label className="block text-xs font-semibold text-foreground mb-1.5">Amount ({useSettingsStore.getState().settings.currency || "SAR"}) *</label>
                   <input type="number" min="0" className="w-full px-3 py-2.5 rounded-xl bg-muted border border-border text-sm text-foreground placeholder-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/30 transition-all"
                     placeholder="0" value={advForm.amount} onChange={(e) => setAdvForm((f) => ({ ...f, amount: e.target.value }))} required />
                 </div>
@@ -1578,6 +1678,21 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
           </div>
         </div>
       )}
+
+      <DeleteConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => {
+          if (deleteTarget.type === 'attendance') {
+            deleteAttendance(deleteTarget.id);
+          } else if (deleteTarget.type === 'advance') {
+            deleteAdvance(deleteTarget.id);
+          }
+        }}
+        title={deleteTarget?.type === 'attendance' ? "Delete Attendance Record" : "Delete Transaction"}
+        description="Are you sure you want to delete this record? This action cannot be undone."
+        itemName={deleteTarget?.name}
+      />
     </div>
   );
 }

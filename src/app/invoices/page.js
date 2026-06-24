@@ -6,6 +6,8 @@ import {
   Search, Filter, Plus, FileDown, Eye, Send,
   DollarSign, Calendar, MapPin
 } from "lucide-react";
+import useUserStore from "@/store/useUserStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const initialInvoices = [
   { id: "INV-0034", client: "Al-Rashid Co.", project: "Tower Block A", amount: "14,200", issued: "June 01, 2026", due: "June 21, 2026", status: "Overdue" },
@@ -24,8 +26,11 @@ const statusStyles = {
 };
 
 export default function InvoicesPage() {
+  const currency = useCurrency();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
 
   const filteredInvoices = initialInvoices.filter(inv => {
     const matchesSearch = inv.id.toLowerCase().includes(search.toLowerCase()) || 
@@ -44,10 +49,10 @@ export default function InvoicesPage() {
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Invoiced (MTD)", value: `SAR ${totalInvoiced.toLocaleString()}`, icon: FileText, colorClass: "text-blue-600 bg-blue-500/10" },
-          { label: "Total Received Payments", value: `SAR ${totalPaid.toLocaleString()}`, icon: CheckCircle2, colorClass: "text-emerald-600 bg-emerald-500/10" },
-          { label: "Outstanding Receivables", value: `SAR ${totalOutstanding.toLocaleString()}`, icon: AlertTriangle, colorClass: "text-amber-600 bg-amber-500/10" },
-          { label: "Overdue Invoices", value: "SAR 14,200", icon: ShieldAlert, colorClass: "text-rose-600 bg-rose-500/10" },
+          { label: "Total Invoiced (MTD)", value: `${currency} ${totalInvoiced.toLocaleString()}`, icon: FileText, colorClass: "text-blue-600 bg-blue-500/10" },
+          { label: "Total Received Payments", value: `${currency} ${totalPaid.toLocaleString()}`, icon: CheckCircle2, colorClass: "text-emerald-600 bg-emerald-500/10" },
+          { label: "Outstanding Receivables", value: `${currency} ${totalOutstanding.toLocaleString()}`, icon: AlertTriangle, colorClass: "text-amber-600 bg-amber-500/10" },
+          { label: "Overdue Invoices", value: `${currency} 14,200`, icon: ShieldAlert, colorClass: "text-rose-600 bg-rose-500/10" },
         ].map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -92,9 +97,11 @@ export default function InvoicesPage() {
             <option value="Draft">Draft</option>
           </select>
 
-          <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer">
-            <Plus size={14} /> New Invoice
-          </button>
+          {!isReadOnly && (
+            <button className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer">
+              <Plus size={14} /> New Invoice
+            </button>
+          )}
         </div>
       </div>
 
@@ -107,7 +114,7 @@ export default function InvoicesPage() {
               <span>Invoice ID</span>
               <span>Client</span>
               <span>Project</span>
-              <span>Amount (SAR)</span>
+              <span>Amount ({currency})</span>
               <span>Issued</span>
               <span>Due Date</span>
               <span>Status</span>
@@ -129,7 +136,7 @@ export default function InvoicesPage() {
                     <MapPin size={11} className="text-muted-foreground" />
                     {inv.project}
                   </span>
-                  <span className="text-[13px] font-bold text-foreground">SAR {inv.amount}</span>
+                  <span className="text-[13px] font-bold text-foreground">{currency} {inv.amount}</span>
                   <span className="text-[12px] text-muted-foreground flex items-center gap-1">
                     <Calendar size={11} />
                     {inv.issued}
@@ -150,7 +157,7 @@ export default function InvoicesPage() {
                     <button title="Download PDF" className="p-1.5 rounded-lg bg-muted text-muted-foreground hover:text-foreground cursor-pointer border-none transition-colors">
                       <FileDown size={12} />
                     </button>
-                    {inv.status === "Overdue" && (
+                    {!isReadOnly && inv.status === "Overdue" && (
                       <button title="Send Reminder" className="p-1.5 rounded-lg bg-rose-500/10 text-rose-600 hover:bg-rose-500/20 cursor-pointer border-none transition-colors animate-pulse">
                         <Send size={12} />
                       </button>

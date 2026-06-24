@@ -1,26 +1,85 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Settings, Building, DollarSign, Bell, ShieldCheck,
   Save, ToggleLeft, ToggleRight, CheckCircle2
 } from "lucide-react";
+import useUserStore from "@/store/useUserStore";
+import useSettingsStore from "@/store/useSettingsStore";
+import { toast } from "react-hot-toast";
 
 export default function SettingsPage() {
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const [activeTab, setActiveTab] = useState("company");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
-  // Mocks of switches
-  const [notifications, setNotifications] = useState({
-    emailSummary: true,
-    delayAlerts: true,
-    invoiceOverdue: false,
-    assetMaintenance: true
-  });
+  const { settings, saveSettings } = useSettingsStore();
+
+  // Controlled States
+  const [companyName, setCompanyName] = useState(settings.companyName);
+  const [registrationNumber, setRegistrationNumber] = useState(settings.registrationNumber);
+  const [headquartersAddress, setHeadquartersAddress] = useState(settings.headquartersAddress);
+  
+  const [currency, setCurrency] = useState(settings.currency);
+  const [vatRate, setVatRate] = useState(settings.vatRate);
+  const [fiscalYearStart, setFiscalYearStart] = useState(settings.fiscalYearStart);
+
+  const [notifications, setNotifications] = useState(settings.notifications);
+
+  const [sessionTimeout, setSessionTimeout] = useState(settings.sessionTimeout);
+  const [biometricMatchRate, setBiometricMatchRate] = useState(settings.biometricMatchRate);
+
+  // Sync state if store settings change
+  useEffect(() => {
+    setCompanyName(settings.companyName);
+    setRegistrationNumber(settings.registrationNumber);
+    setHeadquartersAddress(settings.headquartersAddress);
+    setCurrency(settings.currency);
+    setVatRate(settings.vatRate);
+    setFiscalYearStart(settings.fiscalYearStart);
+    setNotifications(settings.notifications);
+    setSessionTimeout(settings.sessionTimeout);
+    setBiometricMatchRate(settings.biometricMatchRate);
+  }, [settings]);
 
   const handleSave = () => {
+    if (isReadOnly) {
+      toast.error("Access Denied: Read-only privilege.");
+      return;
+    }
+
+    if (!companyName.trim()) {
+      toast.error("Enterprise Name cannot be empty.");
+      return;
+    }
+
+    if (!registrationNumber.trim()) {
+      toast.error("Registration Number cannot be empty.");
+      return;
+    }
+
+    const config = {
+      companyName,
+      registrationNumber,
+      headquartersAddress,
+      currency,
+      vatRate,
+      fiscalYearStart,
+      notifications,
+      sessionTimeout,
+      biometricMatchRate
+    };
+
+    saveSettings(config);
+    
     setSaveSuccess(true);
-    setTimeout(() => setSaveSuccess(false), 3000);
+    toast.success("ERP configurations saved successfully");
+    setTimeout(() => {
+      setSaveSuccess(false);
+      window.location.reload();
+    }, 1000);
   };
 
   return (
@@ -68,15 +127,33 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Enterprise Name</label>
-                    <input type="text" defaultValue="Seven Directions Construction" className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" />
+                    <input 
+                      disabled={isReadOnly} 
+                      type="text" 
+                      value={companyName} 
+                      onChange={(e) => setCompanyName(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" 
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Registration Number</label>
-                    <input type="text" defaultValue="CR-1010998877" className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" />
+                    <input 
+                      disabled={isReadOnly} 
+                      type="text" 
+                      value={registrationNumber} 
+                      onChange={(e) => setRegistrationNumber(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" 
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5 sm:col-span-2">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Headquarters Address</label>
-                    <input type="text" defaultValue="Olaya District, Riyadh 12211, Saudi Arabia" className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" />
+                    <input 
+                      disabled={isReadOnly} 
+                      type="text" 
+                      value={headquartersAddress} 
+                      onChange={(e) => setHeadquartersAddress(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" 
+                    />
                   </div>
                 </div>
               </div>
@@ -93,7 +170,12 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Default ERP Currency</label>
-                    <select className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring">
+                    <select 
+                      disabled={isReadOnly} 
+                      value={currency}
+                      onChange={(e) => setCurrency(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring"
+                    >
                       <option value="SAR">SAR - Saudi Riyal</option>
                       <option value="AED">AED - UAE Dirham</option>
                       <option value="USD">USD - US Dollar</option>
@@ -101,11 +183,22 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">VAT Tax Rate (%)</label>
-                    <input type="number" defaultValue="15" className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" />
+                    <input 
+                      disabled={isReadOnly} 
+                      type="number" 
+                      value={vatRate} 
+                      onChange={(e) => setVatRate(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" 
+                    />
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Fiscal Year Start</label>
-                    <select className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring">
+                    <select 
+                      disabled={isReadOnly} 
+                      value={fiscalYearStart}
+                      onChange={(e) => setFiscalYearStart(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring"
+                    >
                       <option value="1">January 1st</option>
                       <option value="4">April 1st</option>
                     </select>
@@ -135,8 +228,9 @@ export default function SettingsPage() {
                         <p className="text-[11px] text-muted-foreground mt-0.5">{item.desc}</p>
                       </div>
                       <button
-                        onClick={() => setNotifications(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
-                        className="bg-transparent border-none cursor-pointer text-primary transition-transform"
+                        onClick={() => !isReadOnly && setNotifications(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
+                        disabled={isReadOnly}
+                        className="bg-transparent border-none cursor-pointer text-primary transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         {notifications[item.key] ? <ToggleRight size={24} /> : <ToggleLeft size={24} className="text-muted-foreground/60" />}
                       </button>
@@ -157,7 +251,12 @@ export default function SettingsPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Session Timeout</label>
-                    <select className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring">
+                    <select 
+                      disabled={isReadOnly} 
+                      value={sessionTimeout}
+                      onChange={(e) => setSessionTimeout(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring"
+                    >
                       <option value="30">30 Minutes</option>
                       <option value="60">1 Hour</option>
                       <option value="120">2 Hours</option>
@@ -165,7 +264,12 @@ export default function SettingsPage() {
                   </div>
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Biometric Match Rate</label>
-                    <select className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring">
+                    <select 
+                      disabled={isReadOnly} 
+                      value={biometricMatchRate}
+                      onChange={(e) => setBiometricMatchRate(e.target.value)}
+                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring"
+                    >
                       <option value="98">98% Match (High Security)</option>
                       <option value="95">95% Match (Standard)</option>
                       <option value="90">90% Match (Fast Verification)</option>
@@ -187,12 +291,14 @@ export default function SettingsPage() {
               )}
             </div>
 
-            <button
-              onClick={handleSave}
-              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer w-full sm:w-auto justify-center"
-            >
-              <Save size={14} /> Save Configurations
-            </button>
+            {!isReadOnly && (
+              <button
+                onClick={handleSave}
+                className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer w-full sm:w-auto justify-center"
+              >
+                <Save size={14} /> Save Configurations
+              </button>
+            )}
           </div>
 
         </div>

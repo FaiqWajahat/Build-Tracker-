@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Package, Wrench, AlertTriangle, ShieldCheck,
   Search, Plus, Hammer, User, MapPin, Calendar,
@@ -9,6 +9,9 @@ import {
 import useAssetStore, { ASSET_CATEGORIES, ASSET_STATUSES } from "@/store/useAssetStore";
 import useProjectStore from "@/store/useProjectStore";
 import useLabourStore from "@/store/useLabourStore";
+import Loader from "@/components/ui/Loader";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import useUserStore from "@/store/useUserStore";
 
 const statusStyles = {
   "In Use":            "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
@@ -220,14 +223,22 @@ function AssetProfileModal({ asset, onClose, projectName, operatorName }) {
 }
 
 export default function AssetsPage() {
-  const { assets, addAsset, updateAsset, deleteAsset } = useAssetStore();
+  const { assets, addAsset, updateAsset, deleteAsset, fetchAssetData, loading, loaded } = useAssetStore();
   const { projects } = useProjectStore();
-  const { workers } = useLabourStore();
+  const { workers, fetchLabourData } = useLabourStore();
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
+
+  useEffect(() => {
+    fetchLabourData();
+    fetchAssetData();
+  }, [fetchLabourData, fetchAssetData]);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [modalAsset, setModalAsset] = useState(null); // null = closed, {} = new, {id:...} = edit
   const [viewAsset, setViewAsset] = useState(null); // The asset profile to view
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const today = new Date().toISOString().split('T')[0];
 
@@ -254,6 +265,13 @@ export default function AssetsPage() {
     setModalAsset(null);
   }
 
+  function confirmDelete() {
+    if (deleteTarget) {
+      deleteAsset(deleteTarget.id);
+      setDeleteTarget(null);
+    }
+  }
+
   function getProjectName(pid) {
     return projects.find(p => p.id === pid)?.name || "--";
   }
@@ -263,7 +281,12 @@ export default function AssetsPage() {
   }
 
   return (
-    <div className="p-6 min-h-full">
+    <div className="p-6 min-h-full relative">
+      {loading && (
+        <Loader 
+          message={!loaded ? "Loading asset registry..." : "Updating registry..."} 
+        />
+      )}
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
@@ -312,12 +335,14 @@ export default function AssetsPage() {
             {ASSET_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
-          <button 
-            onClick={() => setModalAsset({})} 
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
-          >
-            <Plus size={14} /> Add Asset
-          </button>
+          {!isReadOnly && (
+            <button 
+              onClick={() => setModalAsset({})} 
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
+            >
+              <Plus size={14} /> Add Asset
+            </button>
+          )}
         </div>
       </div>
 
@@ -346,14 +371,16 @@ export default function AssetsPage() {
                     <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10.5px] font-bold ${statusClass}`}>
                       {a.status}
                     </span>
-                    <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
-                      <button onClick={() => setModalAsset(a)} className="p-1.5 rounded bg-muted hover:bg-primary/20 text-primary transition-colors cursor-pointer border-none">
-                        <Edit2 size={12} />
-                      </button>
-                      <button onClick={() => { if(confirm("Are you sure you want to delete this asset?")) deleteAsset(a.id); }} className="p-1.5 rounded bg-muted hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer border-none">
-                        <Trash2 size={12} />
-                      </button>
-                    </div>
+                    {!isReadOnly && (
+                      <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-1">
+                        <button onClick={() => setModalAsset(a)} className="p-1.5 rounded bg-muted hover:bg-primary/20 text-primary transition-colors cursor-pointer border-none">
+                          <Edit2 size={12} />
+                        </button>
+                        <button onClick={() => setDeleteTarget(a)} className="p-1.5 rounded bg-muted hover:bg-rose-500/20 text-rose-500 transition-colors cursor-pointer border-none" title="Delete">
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -424,6 +451,17 @@ export default function AssetsPage() {
           onClose={() => setViewAsset(null)}
           projectName={getProjectName(viewAsset.projectId)}
           operatorName={getOperatorName(viewAsset.operatorId)}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={confirmDelete}
+          title="Delete Asset"
+          description="Are you sure you want to delete this asset? This action will permanently remove it from the registry."
+          itemName={deleteTarget.name}
         />
       )}
     </div>

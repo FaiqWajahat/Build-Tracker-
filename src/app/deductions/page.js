@@ -8,6 +8,9 @@ import {
 } from "lucide-react";
 import useContractorStore from "@/store/useContractorStore";
 import useProjectStore from "@/store/useProjectStore";
+import useUserStore from "@/store/useUserStore";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const categoryStyles = {
   "Material Damage": "bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20",
@@ -17,6 +20,7 @@ const categoryStyles = {
 };
 
 export default function DeductionsPage() {
+  const currency = useCurrency();
   const contractors = useContractorStore((s) => s.contractors);
   const deductions = useContractorStore((s) => s.deductions);
   const addDeduction = useContractorStore((s) => s.addDeduction);
@@ -27,6 +31,10 @@ export default function DeductionsPage() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [showLogModal, setShowLogModal] = useState(false);
   const [selectedDeduction, setSelectedDeduction] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
 
   const [form, setForm] = useState({
     contractorId: "",
@@ -90,10 +98,10 @@ export default function DeductionsPage() {
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Total Deductions MTD", value: `SAR ${stats.total.toLocaleString()}`, icon: TrendingDown, colorClass: "text-rose-600 bg-rose-500/10" },
-          { label: "Material Damage Claims", value: `SAR ${stats.damage.toLocaleString()}`, icon: Wrench, colorClass: "text-amber-600 bg-amber-500/10" },
-          { label: "Safety Violations Fines", value: `SAR ${stats.safety.toLocaleString()}`, icon: ShieldAlert, colorClass: "text-purple-600 bg-purple-500/10" },
-          { label: "Advance Repayments", value: `SAR ${stats.advances.toLocaleString()}`, icon: DollarSign, colorClass: "text-blue-600 bg-blue-500/10" },
+          { label: "Total Deductions MTD", value: `${currency} ${stats.total.toLocaleString()}`, icon: TrendingDown, colorClass: "text-rose-600 bg-rose-500/10" },
+          { label: "Material Damage Claims", value: `${currency} ${stats.damage.toLocaleString()}`, icon: Wrench, colorClass: "text-amber-600 bg-amber-500/10" },
+          { label: "Safety Violations Fines", value: `${currency} ${stats.safety.toLocaleString()}`, icon: ShieldAlert, colorClass: "text-purple-600 bg-purple-500/10" },
+          { label: "Advance Repayments", value: `${currency} ${stats.advances.toLocaleString()}`, icon: DollarSign, colorClass: "text-blue-600 bg-blue-500/10" },
         ].map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -138,12 +146,14 @@ export default function DeductionsPage() {
             <option value="Delay Penalty">Delay Penalty</option>
           </select>
 
-          <button
-            onClick={() => setShowLogModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
-          >
-            <Plus size={14} /> Log Deduction
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setShowLogModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
+            >
+              <Plus size={14} /> Log Deduction
+            </button>
+          )}
         </div>
       </div>
 
@@ -156,7 +166,7 @@ export default function DeductionsPage() {
               <span>Ref ID</span>
               <span>Deducted Entity</span>
               <span>Project Site</span>
-              <span>Deduction (SAR)</span>
+              <span>Deduction ({currency})</span>
               <span>Category</span>
               <span>Date Logged</span>
               <span>Approved By</span>
@@ -178,7 +188,7 @@ export default function DeductionsPage() {
                     <MapPin size={11} className="text-muted-foreground" />
                     {d.site}
                   </span>
-                  <span className="text-[13px] font-bold text-rose-500">SAR {d.amount?.toLocaleString()}</span>
+                  <span className="text-[13px] font-bold text-rose-500">{currency} {d.amount?.toLocaleString()}</span>
                   <div>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-[10.5px] font-bold ${catClass}`}>
                       {d.category}
@@ -200,13 +210,15 @@ export default function DeductionsPage() {
                     >
                       <Eye size={12} />
                     </button>
-                    <button
-                      onClick={() => deleteDeduction(d.id)}
-                      title="Delete Record"
-                      className="p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 cursor-pointer border-none transition-colors"
-                    >
-                      <Trash2 size={12} />
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        onClick={() => setDeleteTarget(d)}
+                        title="Delete Record"
+                        className="p-1.5 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 cursor-pointer border-none transition-colors"
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
                   </div>
                 </div>
               );
@@ -261,7 +273,7 @@ export default function DeductionsPage() {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground">Deduction Amount (SAR)</label>
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground">Deduction Amount ({currency})</label>
                   <input
                     type="number"
                     value={form.amount}
@@ -369,7 +381,7 @@ export default function DeductionsPage() {
               </div>
               <div className="flex justify-between border-b border-border/40 pb-1.5">
                 <span className="text-muted-foreground font-bold">Amount</span>
-                <span className="font-extrabold text-rose-500 text-sm">SAR {selectedDeduction.amount?.toLocaleString()}</span>
+                <span className="font-extrabold text-rose-500 text-sm">{currency} {selectedDeduction.amount?.toLocaleString()}</span>
               </div>
               <div className="pt-1.5">
                 <span className="text-muted-foreground block mb-1">Description / Remarks</span>
@@ -386,6 +398,20 @@ export default function DeductionsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deleteDeduction(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+          title="Delete Deduction"
+          description="Are you sure you want to delete this deduction? This action will permanently remove it from the contractor's ledger."
+          itemName={`${deleteTarget.contractorName} - ${currency} ${deleteTarget.amount?.toLocaleString()}`}
+        />
       )}
     </div>
   );

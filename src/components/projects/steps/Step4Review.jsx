@@ -151,8 +151,6 @@ export default function Step4Review({ basicInfo, structure, scopes }) {
     return acc;
   }, {});
 
-  const totalSubScopes = scopes.reduce((n, s) => n + (s.selectedSubScopes?.length || 0), 0);
-
   return (
     <div className="space-y-5">
       <div className="flex items-center gap-2 p-3 rounded-xl bg-emerald-500/5 border border-emerald-500/20">
@@ -183,7 +181,7 @@ export default function Step4Review({ basicInfo, structure, scopes }) {
       {/* Scopes */}
       {scopes.length > 0 && (
         <div className="bg-card border border-border rounded-xl p-4">
-          <SectionHeader icon={CheckCircle2} title={`Work Scopes (${scopes.length} scope${scopes.length !== 1 ? "s" : ""} · ${totalSubScopes} sub-scope${totalSubScopes !== 1 ? "s" : ""})`} />
+          <SectionHeader icon={CheckCircle2} title={`Work Scopes (${scopes.length} scope${scopes.length !== 1 ? "s" : ""})`} />
           <div className="space-y-3">
             {Object.entries(scopesByTrade).map(([trade, entries]) => (
               <div key={trade}>
@@ -191,19 +189,10 @@ export default function Step4Review({ basicInfo, structure, scopes }) {
                 <div className="space-y-1.5">
                   {entries.map((entry) => (
                     <div key={entry.scopeId} className="bg-muted rounded-lg px-3 py-2">
-                      <div className="flex items-center justify-between mb-1">
+                      <div className="flex items-center justify-between">
                         <span className="text-[12px] font-semibold text-foreground">{entry.scopeName}</span>
                         <span className="text-[10px] font-mono font-bold text-muted-foreground">{entry.uom}</span>
                       </div>
-                      {entry.selectedSubScopes?.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mt-1">
-                          {entry.selectedSubScopes.map((ss) => (
-                            <span key={ss.id} className="text-[10.5px] px-2 py-0.5 bg-primary/10 text-primary border border-primary/15 rounded-md font-medium">
-                              {ss.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
                     </div>
                   ))}
                 </div>

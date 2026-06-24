@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   FolderKanban, Users, DollarSign, FileText, ArrowUpRight, ArrowDownRight,
   MapPin, Clock, Zap, Activity, Wrench, UserCheck, BarChart3, CalendarDays,
@@ -12,16 +12,19 @@ import {
 } from "recharts";
 
 import useProjectStore from "@/store/useProjectStore";
-import useLabourStore from "@/store/useLabourStore";
-import useAssetStore from "@/store/useAssetStore";
+import useDashboardStore from "@/store/useDashboardStore";
+import Loader from "@/components/ui/Loader";
+import { useCurrency } from "@/store/useSettingsStore";
 
 // Static fallback data
-const activities = [
-  { type: "worker", icon: UserCheck, iconBgClass: "bg-status-ontrack/10 text-status-ontrack", text: "3 new workers onboarded to Team #5", sub: "Mason × 2, Helper × 1", time: "2h ago" },
-  { type: "alert", icon: Wrench, iconBgClass: "bg-status-atrisk/10 text-status-atrisk", text: "Asset #AST-006 flagged for maintenance", sub: "Vehicle · Overdue", time: "3h ago" },
-  { type: "payment", icon: DollarSign, iconBgClass: "bg-chart-2/10 text-chart-2", text: "Sub payment SAR 18,400 approved", sub: "Mohammad Khalid · PRJ-001", time: "5h ago" },
-  { type: "milestone", icon: Zap, iconBgClass: "bg-status-ontrack/10 text-status-ontrack", text: "Mall Extension passed 80% completion", sub: "Milestone auto-triggered", time: "1d ago" },
-];
+export function getActivities(currency) {
+  return [
+    { type: "worker", icon: UserCheck, iconBgClass: "bg-status-ontrack/10 text-status-ontrack", text: "3 new workers onboarded to Team #5", sub: "Mason × 2, Helper × 1", time: "2h ago" },
+    { type: "alert", icon: Wrench, iconBgClass: "bg-status-atrisk/10 text-status-atrisk", text: "Asset #AST-006 flagged for maintenance", sub: "Vehicle · Overdue", time: "3h ago" },
+    { type: "payment", icon: DollarSign, iconBgClass: "bg-chart-2/10 text-chart-2", text: `Sub payment ${currency} 18,400 approved`, sub: "Mohammad Khalid · PRJ-001", time: "5h ago" },
+    { type: "milestone", icon: Zap, iconBgClass: "bg-status-ontrack/10 text-status-ontrack", text: "Mall Extension passed 80% completion", sub: "Milestone auto-triggered", time: "1d ago" },
+  ];
+}
 
 const monthlyRevenue = [
   { month: "Jan", revenue: 140, cost: 108 },
@@ -61,18 +64,34 @@ const CustomTooltip = ({ active, payload, label }) => {
 };
 
 export default function DashboardPage() {
+  const currency = useCurrency();
   const { projects } = useProjectStore();
-  const { workers } = useLabourStore();
-  const { assets } = useAssetStore();
+  const {
+    totalWorkforce,
+    totalAssets,
+    pendingInvoicesCount,
+    pendingInvoicesAmount,
+    attendanceToday,
+    assetOverview,
+    monthlyRevenue,
+    financialStats,
+    resourceDensity,
+    fetchDashboardData,
+    loading
+  } = useDashboardStore();
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
 
   const activeProjects = projects.filter(p => p.status !== "Completed");
   
   // KPIs
   const kpis = [
     { label: "Active Projects", value: activeProjects.length.toString(), change: "+1", changeLabel: "this month", up: true, icon: FolderKanban, iconClass: "text-status-ahead bg-status-ahead/10", changeClass: "bg-status-ontrack/10 text-status-ontrack" },
-    { label: "Total Workforce", value: workers.length.toString(), change: "+5%", changeLabel: "vs last month", up: true, icon: Users, iconClass: "text-status-ontrack bg-status-ontrack/10", changeClass: "bg-status-ontrack/10 text-status-ontrack" },
-    { label: "Total Assets", value: assets.length.toString(), change: "-1", changeLabel: "in maintenance", up: false, icon: Wrench, iconClass: "text-chart-2 bg-chart-2/10", changeClass: "bg-status-delayed/10 text-status-delayed" },
-    { label: "Pending Invoices", value: "3", change: "SAR 42.5K", changeLabel: "outstanding", up: false, icon: FileText, iconClass: "text-status-delayed bg-status-delayed/10", changeClass: "bg-status-delayed/10 text-status-delayed" },
+    { label: "Total Workforce", value: totalWorkforce.toString(), change: "+5%", changeLabel: "vs last month", up: true, icon: Users, iconClass: "text-status-ontrack bg-status-ontrack/10", changeClass: "bg-status-ontrack/10 text-status-ontrack" },
+    { label: "Total Assets", value: totalAssets.toString(), change: "-1", changeLabel: "in maintenance", up: false, icon: Wrench, iconClass: "text-chart-2 bg-chart-2/10", changeClass: "bg-status-delayed/10 text-status-delayed" },
+    { label: "Pending Invoices", value: pendingInvoicesCount.toString(), change: `${currency} ${(pendingInvoicesAmount / 1000).toFixed(1)}K`, changeLabel: "outstanding", up: false, icon: FileText, iconClass: "text-status-delayed bg-status-delayed/10", changeClass: "bg-status-delayed/10 text-status-delayed" },
   ];
 
   // Chart 1: Project Progress Portfolio
@@ -93,16 +112,9 @@ export default function DashboardPage() {
     fill: statusConfig[status]?.color || "#3b82f6"
   }));
 
-  // Chart 3: Resource Allocation Density
-  const allocationData = activeProjects.map(p => {
-    const pWorkers = workers.filter(w => w.projectId === p.id).length;
-    const pAssets = assets.filter(a => a.projectId === p.id).length;
-    return {
-      name: p.name.split(" ")[0],
-      workers: pWorkers || Math.floor(Math.random() * 20) + 5, // fallback dummy data so it looks good if unassigned
-      assets: pAssets || Math.floor(Math.random() * 8) + 1,
-    };
-  });
+  if (loading && !totalWorkforce) {
+    return <Loader />;
+  }
 
   return (
     <div className="p-6 min-h-full space-y-5">
@@ -135,7 +147,7 @@ export default function DashboardPage() {
           <div className="flex justify-between items-start mb-6">
             <div>
               <h2 className="text-[14px] font-bold text-foreground mb-1">Revenue vs Cost</h2>
-              <p className="text-[11.5px] text-muted-foreground">Last 6 months · SAR thousands</p>
+              <p className="text-[11.5px] text-muted-foreground">Last 6 months · {currency} thousands</p>
             </div>
             <button className="flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg px-2.5 py-1.5 transition-colors border-none cursor-pointer">
               <BarChart3 size={13} /> Full Report
@@ -156,9 +168,9 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-3 gap-3 mt-6 pt-5 border-t border-border">
             {[
-              { label: "Gross Revenue", value: "SAR 1,001K", colorClass: "text-chart-1 font-extrabold" },
-              { label: "Total Cost",    value: "SAR 767K",   colorClass: "text-chart-2 font-extrabold" },
-              { label: "Net Margin",    value: "23.4%",      colorClass: "text-status-ontrack font-extrabold" },
+              { label: "Gross Revenue", value: financialStats.grossRevenueVal ? `${currency} ${financialStats.grossRevenueVal}K` : financialStats.grossRevenue, colorClass: "text-chart-1 font-extrabold" },
+              { label: "Total Cost",    value: financialStats.totalCostVal ? `${currency} ${financialStats.totalCostVal}K` : financialStats.totalCost,   colorClass: "text-chart-2 font-extrabold" },
+              { label: "Net Margin",    value: financialStats.netMargin,      colorClass: "text-status-ontrack font-extrabold" },
             ].map((m) => (
               <div key={m.label}>
                 <p className="text-[11.5px] text-muted-foreground mb-0.5">{m.label}</p>
@@ -175,23 +187,25 @@ export default function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h2 className="text-[14px] font-bold text-foreground">Attendance Today</h2>
-                <p className="text-[11.5px] text-muted-foreground mt-0.5 flex items-center gap-1"><CalendarDays size={11} /> Jun 16, 2026</p>
+                <p className="text-[11.5px] text-muted-foreground mt-0.5 flex items-center gap-1">
+                  <CalendarDays size={11} /> {attendanceToday.date ? new Date(attendanceToday.date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                </p>
               </div>
               <div className="relative inline-flex items-center justify-center">
                 <PieChart width={76} height={76}>
-                  <Pie data={[{value: 83}, {value: 17}]} cx="50%" cy="50%" innerRadius={30} outerRadius={38} dataKey="value" stroke="none">
+                  <Pie data={[{value: attendanceToday.rate}, {value: 100 - attendanceToday.rate}]} cx="50%" cy="50%" innerRadius={30} outerRadius={38} dataKey="value" stroke="none">
                     <Cell fill="var(--chart-5)" />
                     <Cell fill="var(--muted)" />
                   </Pie>
                 </PieChart>
-                <span className="absolute text-[13px] font-extrabold text-foreground">83%</span>
+                <span className="absolute text-[13px] font-extrabold text-foreground">{attendanceToday.rate}%</span>
               </div>
             </div>
             <div className="grid grid-cols-3 gap-2">
               {[
-                { label: "Present", value: "118", class: "bg-status-ontrack/10 text-status-ontrack" },
-                { label: "Absent",  value: "12",  class: "bg-status-atrisk/10 text-status-atrisk" },
-                { label: "Leave",   value: "12",  class: "bg-status-delayed/10 text-status-delayed" },
+                { label: "Present", value: attendanceToday.present.toString(), class: "bg-status-ontrack/10 text-status-ontrack" },
+                { label: "Absent",  value: attendanceToday.absent.toString(),  class: "bg-status-atrisk/10 text-status-atrisk" },
+                { label: "Leave",   value: attendanceToday.leave.toString(),   class: "bg-status-delayed/10 text-status-delayed" },
               ].map((s) => (
                 <div key={s.label} className={`rounded-lg p-2.5 text-center ${s.class}`}>
                   <p className="text-18 font-extrabold leading-none">{s.value}</p>
@@ -204,19 +218,14 @@ export default function DashboardPage() {
           {/* Assets card */}
           <div className="bg-card border border-border rounded-xl p-5 flex-1 shadow-xs fade-up">
             <h2 className="text-[14px] font-bold text-foreground mb-4">Asset Overview</h2>
-            {[
-              { label: "Crane Units",      total: 4, inUse: 3, colorClass: "bg-chart-3" },
-              { label: "Scaffolding Sets",  total: 18, inUse: 12, colorClass: "bg-chart-2" },
-              { label: "Generators",        total: 6, inUse: 4, colorClass: "bg-chart-5" },
-              { label: "Excavators",        total: 3, inUse: 2, colorClass: "bg-chart-4" },
-            ].map((a) => (
+            {assetOverview.map((a) => (
               <div key={a.label} className="mb-3.5">
                 <div className="flex justify-between mb-1.5">
                   <span className="text-[12.5px] font-medium text-foreground">{a.label}</span>
                   <span className="text-[11.5px] text-muted-foreground">{a.inUse}/{a.total} in use</span>
                 </div>
                 <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                  <div className={`h-full rounded-full transition-all duration-1000 ${a.colorClass}`} style={{ width: `${(a.inUse / a.total) * 100}%` }} />
+                  <div className={`h-full rounded-full transition-all duration-1000 ${a.colorClass}`} style={{ width: `${a.total > 0 ? (a.inUse / a.total) * 100 : 0}%` }} />
                 </div>
               </div>
             ))}
@@ -272,7 +281,7 @@ export default function DashboardPage() {
           <p className="text-[11.5px] text-muted-foreground mb-4">Labour force vs Assets deployed</p>
           <div className="w-full">
             <ResponsiveContainer width="100%" height={240}>
-              <ComposedChart data={allocationData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+              <ComposedChart data={resourceDensity} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
                 <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
@@ -351,13 +360,13 @@ export default function DashboardPage() {
             <button className="text-muted-foreground hover:bg-muted p-0.5 border-none cursor-pointer rounded-sm"><MoreHorizontal size={16} /></button>
           </div>
           <div className="flex flex-col gap-1">
-            {activities.map((a, i) => {
+            {getActivities(currency).map((a, i, arr) => {
               const Icon = a.icon;
               return (
                 <div key={i} className="flex gap-3 p-2 rounded-lg hover:bg-muted/40 items-start">
                   <div className="flex flex-col items-center">
                     <div className={`w-7.5 h-7.5 rounded-lg flex items-center justify-center ${a.iconBgClass}`}><Icon size={13} /></div>
-                    {i < activities.length - 1 && <div className="w-px h-6 bg-border mt-1" />}
+                    {i < arr.length - 1 && <div className="w-px h-6 bg-border mt-1" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[12.5px] font-semibold text-foreground leading-snug">{a.text}</p>

@@ -10,6 +10,8 @@ import Link from "next/link";
 import useProgressStore from "@/store/useProgressStore";
 import useProjectStore from "@/store/useProjectStore";
 import useAssignmentStore from "@/store/useAssignmentStore";
+import useUserStore from "@/store/useUserStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const statusStyles = {
   Approved:      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
@@ -18,9 +20,12 @@ const statusStyles = {
 };
 
 export default function DailyProgressPage() {
+  const currency = useCurrency();
   const logs = useProgressStore((s) => s.logs);
   const approveLog = useProgressStore((s) => s.approveLog);
   const deleteLog = useProgressStore((s) => s.deleteLog);
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const projects = useProjectStore((s) => s.projects);
   const assignments = useAssignmentStore((s) => s.assignments);
 
@@ -78,7 +83,7 @@ export default function DailyProgressPage() {
           { label: "Approved", value: kpis.approved, icon: CheckCircle2, cls: "text-emerald-600 bg-emerald-500/10" },
           { label: "Pending Review", value: kpis.pending, icon: Clock, cls: "text-amber-600 bg-amber-500/10" },
           { label: "Flagged", value: kpis.flagged, icon: AlertOctagon, cls: "text-rose-600 bg-rose-500/10" },
-          { label: "Total Earned (All)", value: `SAR ${(kpis.totalEarned / 1000).toFixed(0)}K`, icon: DollarSign, cls: "text-purple-600 bg-purple-500/10" },
+          { label: "Total Earned (All)", value: `${currency} ${(kpis.totalEarned / 1000).toFixed(0)}K`, icon: DollarSign, cls: "text-purple-600 bg-purple-500/10" },
         ].map((s, i) => {
           const Icon = s.icon;
           return (
@@ -150,7 +155,7 @@ export default function DailyProgressPage() {
                 </div>
                 <div className="h-px flex-1 bg-border" />
                 <p className="text-[11px] text-muted-foreground font-semibold">
-                  {dayLogs.length} logs · SAR {dayEarned.toLocaleString()} earned
+                  {dayLogs.length} logs · {currency} {dayEarned.toLocaleString()} earned
                 </p>
               </div>
 
@@ -197,7 +202,7 @@ export default function DailyProgressPage() {
                         <div className="text-right shrink-0">
                           <p className="text-sm font-extrabold text-foreground">+{log.qtyCompleted} {log.uom}</p>
                           <p className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
-                            SAR {log.amountEarned?.toLocaleString()}
+                            {currency} {log.amountEarned?.toLocaleString()}
                           </p>
                         </div>
 
@@ -217,7 +222,7 @@ export default function DailyProgressPage() {
                             </div>
                             <div>
                               <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Rate</p>
-                              <p className="font-semibold text-foreground mt-0.5">SAR {log.rate?.toLocaleString()} / {log.uom}</p>
+                              <p className="font-semibold text-foreground mt-0.5">{currency} {log.rate?.toLocaleString()} / {log.uom}</p>
                             </div>
                             <div>
                               <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Log ID</p>
@@ -246,7 +251,7 @@ export default function DailyProgressPage() {
                           )}
                           {/* Actions */}
                           <div className="flex items-center gap-2 pt-1">
-                            {log.status === "Under Review" && (
+                            {!isReadOnly && log.status === "Under Review" && (
                               <button
                                 onClick={(e) => { e.stopPropagation(); approveLog(log.id); }}
                                 className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer"
@@ -254,12 +259,14 @@ export default function DailyProgressPage() {
                                 <Check size={12} /> Approve
                               </button>
                             )}
-                            <button
-                              onClick={(e) => { e.stopPropagation(); deleteLog(log.id); setExpandedLog(null); }}
-                              className="flex items-center gap-1 px-3 py-1.5 bg-rose-500/10 text-rose-600 text-xs font-semibold rounded-lg hover:bg-rose-500/20 transition-colors cursor-pointer border-none"
-                            >
-                              <X size={12} /> Delete
-                            </button>
+                            {!isReadOnly && (
+                              <button
+                                onClick={(e) => { e.stopPropagation(); deleteLog(log.id); setExpandedLog(null); }}
+                                className="flex items-center gap-1 px-3 py-1.5 bg-rose-500/10 text-rose-600 text-xs font-semibold rounded-lg hover:bg-rose-500/20 transition-colors cursor-pointer border-none"
+                              >
+                                <X size={12} /> Delete
+                              </button>
+                            )}
                             <Link
                               href={`/projects/${log.projectId}`}
                               onClick={(e) => e.stopPropagation()}

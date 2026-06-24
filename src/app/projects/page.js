@@ -11,6 +11,7 @@ import {
 import useProjectStore from "@/store/useProjectStore";
 import AddProjectModal from "@/components/projects/AddProjectModal";
 import { PROJECT_TYPES } from "@/components/projects/ProjectTypeConfig";
+import useUserStore from "@/store/useUserStore";
 
 /* ─── Status config ───────────────────────────────────────────────── */
 const statusConfig = {
@@ -222,6 +223,8 @@ function ProjectCard({ project }) {
 /* ─── Projects Page ───────────────────────────────────────────────── */
 export default function ProjectsPage() {
   const projects = useProjectStore((s) => s.projects);
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const [search, setSearch]             = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [typeFilter, setTypeFilter]     = useState("All");
@@ -322,12 +325,14 @@ export default function ProjectsPage() {
             ))}
           </select>
 
-          <button
-            onClick={() => setModalOpen(true)}
-            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:bg-primary/90 transition-all shadow-sm cursor-pointer ml-1"
-          >
-            <Plus size={13} /> New Project
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setModalOpen(true)}
+              className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:bg-primary/90 transition-all shadow-sm cursor-pointer ml-1"
+            >
+              <Plus size={13} /> New Project
+            </button>
+          )}
         </div>
       </div>
 
@@ -365,7 +370,7 @@ export default function ProjectsPage() {
                   ? "Try adjusting your filters"
                   : "Click \"New Project\" to create your first project"}
               </p>
-              {!search && statusFilter === "All" && typeFilter === "All" && (
+              {!isReadOnly && !search && statusFilter === "All" && typeFilter === "All" && (
                 <button
                   onClick={() => setModalOpen(true)}
                   className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg hover:bg-primary/90 transition-all cursor-pointer"

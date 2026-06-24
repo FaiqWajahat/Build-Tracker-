@@ -7,10 +7,13 @@ import {
   Download, Upload
 } from "lucide-react";
 import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
+import useUserStore from "@/store/useUserStore";
 
 export default function UnitsTab({ projectId }) {
   const project = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
   const isVilla = project?.subtype?.toLowerCase().includes("villa") || project?.type?.toLowerCase().includes("villa");
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const addPhase = useProjectStore((s) => s.addPhase);
   const updatePhase = useProjectStore((s) => s.updatePhase);
   const deletePhase = useProjectStore((s) => s.deletePhase);
@@ -141,32 +144,34 @@ export default function UnitsTab({ projectId }) {
           </div>
 
           {/* Add Phase Form */}
-          <div className="space-y-2">
-            <input
-              type="text"
-              placeholder="Phase name (e.g. Phase A)"
-              value={newPhaseName}
-              onChange={(e) => setNewPhaseName(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleAddPhase()}
-              className="w-full px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors"
-            />
-            <div className="flex items-center gap-2">
-              {PHASE_COLORS.map((c) => (
+          {!isReadOnly && (
+            <div className="space-y-2">
+              <input
+                type="text"
+                placeholder="Phase name (e.g. Phase A)"
+                value={newPhaseName}
+                onChange={(e) => setNewPhaseName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleAddPhase()}
+                className="w-full px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors"
+              />
+              <div className="flex items-center gap-2">
+                {PHASE_COLORS.map((c) => (
+                  <button
+                    key={c.id}
+                    onClick={() => setNewPhaseColor(c.id)}
+                    className={`w-5 h-5 rounded-full transition-all ${newPhaseColor === c.id ? "ring-2 ring-offset-2 ring-foreground/30 scale-110" : ""}`}
+                    style={{ background: c.hex }}
+                  />
+                ))}
                 <button
-                  key={c.id}
-                  onClick={() => setNewPhaseColor(c.id)}
-                  className={`w-5 h-5 rounded-full transition-all ${newPhaseColor === c.id ? "ring-2 ring-offset-2 ring-foreground/30 scale-110" : ""}`}
-                  style={{ background: c.hex }}
-                />
-              ))}
-              <button
-                onClick={handleAddPhase}
-                className="ml-auto flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-all cursor-pointer"
-              >
-                <Plus size={12} /> Add Phase
-              </button>
+                  onClick={handleAddPhase}
+                  className="ml-auto flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-all cursor-pointer"
+                >
+                  <Plus size={12} /> Add Phase
+                </button>
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Phase List */}
           <div className="space-y-2">
@@ -201,16 +206,18 @@ export default function UnitsTab({ projectId }) {
                         <p className={`text-xs font-bold ${col.text}`}>{phase.name}</p>
                         <p className="text-[10px] text-muted-foreground">{count} units</p>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <button
-                          onClick={() => setEditingPhase({ id: phase.id, name: phase.name, colorId: phase.colorId })}
-                          className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-muted-foreground"
-                        ><Edit3 size={11} /></button>
-                        <button
-                          onClick={() => deletePhase(projectId, phase.id)}
-                          className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"
-                        ><Trash2 size={11} /></button>
-                      </div>
+                      {!isReadOnly && (
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => setEditingPhase({ id: phase.id, name: phase.name, colorId: phase.colorId })}
+                            className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-muted-foreground"
+                          ><Edit3 size={11} /></button>
+                          <button
+                            onClick={() => deletePhase(projectId, phase.id)}
+                            className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"
+                          ><Trash2 size={11} /></button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -233,12 +240,14 @@ export default function UnitsTab({ projectId }) {
                 <h3 className="text-sm font-bold text-foreground">Units / Villas</h3>
                 <p className="text-[11px] text-muted-foreground">Add or import units for this project</p>
               </div>
-              <button
-                onClick={() => setShowBulk((v) => !v)}
-                className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-all cursor-pointer"
-              >
-                <Upload size={12} /> Bulk Import
-              </button>
+              {!isReadOnly && (
+                <button
+                  onClick={() => setShowBulk((v) => !v)}
+                  className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                >
+                  <Upload size={12} /> Bulk Import
+                </button>
+              )}
             </div>
 
             {showBulk && (
@@ -298,16 +307,18 @@ export default function UnitsTab({ projectId }) {
                     <span className="text-[10.5px] text-muted-foreground">({phUnits.length} units)</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setAddingUnitToPhase(phase.id);
-                        setExpandedPhases((p) => ({ ...p, [phase.id]: true }));
-                      }}
-                      className="flex items-center gap-1 text-[10.5px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded-md transition-colors cursor-pointer"
-                    >
-                      <Plus size={10} /> Add Unit
-                    </button>
+                    {!isReadOnly && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setAddingUnitToPhase(phase.id);
+                          setExpandedPhases((p) => ({ ...p, [phase.id]: true }));
+                        }}
+                        className="flex items-center gap-1 text-[10.5px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                      >
+                        <Plus size={10} /> Add Unit
+                      </button>
+                    )}
                     {isExpanded ? <ChevronUp size={13} className="text-muted-foreground" /> : <ChevronDown size={13} className="text-muted-foreground" />}
                   </div>
                 </div>
@@ -410,16 +421,18 @@ export default function UnitsTab({ projectId }) {
                                   )}
                                 </div>
                               </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => setEditingUnit({ ...unit })}
-                                  className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground"
-                                ><Edit3 size={11} /></button>
-                                <button
-                                  onClick={() => deleteUnit(projectId, unit.id)}
-                                  className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"
-                                ><Trash2 size={11} /></button>
-                              </div>
+                              {!isReadOnly && (
+                                <div className="flex items-center gap-1">
+                                  <button
+                                    onClick={() => setEditingUnit({ ...unit })}
+                                    className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground"
+                                  ><Edit3 size={11} /></button>
+                                  <button
+                                    onClick={() => deleteUnit(projectId, unit.id)}
+                                    className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"
+                                  ><Trash2 size={11} /></button>
+                                </div>
+                              )}
                             </>
                           )}
                         </div>
@@ -451,10 +464,12 @@ export default function UnitsTab({ projectId }) {
                       </div>
                       <p className="text-xs font-semibold text-foreground">{unit.name}</p>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <button onClick={() => setEditingUnit({ ...unit })} className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground"><Edit3 size={11} /></button>
-                      <button onClick={() => deleteUnit(projectId, unit.id)} className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"><Trash2 size={11} /></button>
-                    </div>
+                    {!isReadOnly && (
+                      <div className="flex items-center gap-1">
+                        <button onClick={() => setEditingUnit({ ...unit })} className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground"><Edit3 size={11} /></button>
+                        <button onClick={() => deleteUnit(projectId, unit.id)} className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"><Trash2 size={11} /></button>
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

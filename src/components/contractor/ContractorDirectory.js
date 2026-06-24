@@ -11,6 +11,7 @@ import useAssignmentStore from "@/store/useAssignmentStore";
 import useProgressStore from "@/store/useProgressStore";
 import useProjectStore from "@/store/useProjectStore";
 import { formatNumber } from "@/lib/utils";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const statusColors = {
   "Active": "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
@@ -44,7 +45,9 @@ const TRADE_ICONS = {
 export default function ContractorDirectory({
   onSelectContractor,
   onAddContractor,
+  isReadOnly,
 }) {
+  const currency = useCurrency();
   const contractors = useContractorStore((s) => s.contractors);
   const deductions = useContractorStore((s) => s.deductions);
   const payments = useContractorStore((s) => s.payments);
@@ -108,7 +111,7 @@ export default function ContractorDirectory({
         {[
           { label: "Total Contractors", value: contractors.length, icon: HardHat, cls: "text-blue-600 bg-blue-500/10", sub: "registered partners" },
           { label: "High Rated (4.5★+)", value: highRated, icon: Award, cls: "text-emerald-600 bg-emerald-500/10", sub: "top performers" },
-          { label: "Outstanding Liability", value: `SAR ${formatNumber(totalLiability)}`, icon: DollarSign, cls: "text-amber-600 bg-amber-500/10", sub: "net payable balance" },
+          { label: "Outstanding Liability", value: `${currency} ${formatNumber(totalLiability)}`, icon: DollarSign, cls: "text-amber-600 bg-amber-500/10", sub: "net payable balance" },
           { label: "Active Subcontracts", value: `${totalScopes}`, icon: Briefcase, cls: "text-purple-600 bg-purple-500/10", sub: "scope assignments" },
         ].map((stat, i) => {
           const Icon = stat.icon;
@@ -156,12 +159,14 @@ export default function ContractorDirectory({
         >
           {TRADES.map((t) => <option key={t}>{t}</option>)}
         </select>
-        <button
-          onClick={onAddContractor}
-          className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap shadow-sm"
-        >
-          <Plus size={13} /> Add Contractor
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={onAddContractor}
+            className="flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl hover:bg-primary/90 transition-all cursor-pointer whitespace-nowrap shadow-sm"
+          >
+            <Plus size={13} /> Add Contractor
+          </button>
+        )}
       </div>
 
       {/* Grid */}
@@ -217,15 +222,15 @@ export default function ContractorDirectory({
               <div className="grid grid-cols-3 gap-2">
                 <div className="bg-muted/40 rounded-xl p-2.5 border border-border/50">
                   <p className="text-[9px] uppercase font-bold text-muted-foreground mb-0.5">Contract</p>
-                  <p className="text-[11px] font-black text-foreground">SAR {formatNumber(c.totalSubcontractVal)}</p>
+                  <p className="text-[11px] font-black text-foreground">{currency} {formatNumber(c.totalSubcontractVal)}</p>
                 </div>
                 <div className="bg-muted/40 rounded-xl p-2.5 border border-border/50">
                   <p className="text-[9px] uppercase font-bold text-muted-foreground mb-0.5">Earned</p>
-                  <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400">SAR {formatNumber(c.totalEarnedVal)}</p>
+                  <p className="text-[11px] font-black text-emerald-600 dark:text-emerald-400">{currency} {formatNumber(c.totalEarnedVal)}</p>
                 </div>
                 <div className="bg-amber-500/5 rounded-xl p-2.5 border border-amber-500/20">
                   <p className="text-[9px] uppercase font-bold text-muted-foreground mb-0.5">Payable</p>
-                  <p className="text-[11px] font-black text-amber-600 dark:text-amber-400">SAR {formatNumber(c.outstandingLiability)}</p>
+                  <p className="text-[11px] font-black text-amber-600 dark:text-amber-400">{currency} {formatNumber(c.outstandingLiability)}</p>
                 </div>
               </div>
 

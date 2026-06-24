@@ -1,133 +1,201 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import axios from "axios";
+import { toast } from "react-hot-toast";
 
-function genId(prefix, list) {
-  const nums = list
-    .map((x) => parseInt((x.id || `${prefix}-0`).replace(`${prefix}-`, ""), 10))
-    .filter((n) => !isNaN(n));
-  const max = nums.length ? Math.max(...nums) : 0;
-  return `${prefix}-${String(max + 1).padStart(3, "0")}`;
-}
+const useContractorStore = create((set, get) => ({
+  contractors: [],
+  deductions: [],
+  payments: [],
+  loading: false,
+  loaded: false,
 
-const SEED_CONTRACTORS = [
-  { id: "CON-001", name: "Gulf Build Co.", trade: "Civil & Structural", rating: 4.8, status: "Active", email: "info@gulfbuild.sa", phone: "+966 50 123 4567" },
-  { id: "CON-002", name: "Al-Farsi Electric", trade: "Mechanical & Electrical", rating: 4.6, status: "Active", email: "contact@alfarsi.sa", phone: "+966 54 987 6543" },
-  { id: "CON-003", name: "Al-Nour Finishes", trade: "Architectural & Finishes", rating: 4.5, status: "Active", email: "sales@alnour.com", phone: "+966 56 321 0987" },
-  { id: "CON-004", name: "Gulf Plumbing Co.", trade: "Plumbing & Drainage", rating: 4.2, status: "Under Review", email: "plumbing@gulf.co", phone: "+966 53 789 0123" },
-  { id: "CON-005", name: "Najd Steel & Metalworks", trade: "Structural Steel", rating: 4.9, status: "Active", email: "steel@najd.sa", phone: "+966 55 555 4321" },
-];
-
-const SEED_DEDUCTIONS = [
-  { id: "DED-001", contractorId: "CON-001", contractorName: "Gulf Build Co.", site: "ABO YARA Villa Project", amount: 4500, category: "Material Damage", date: "2026-06-12", approvedBy: "Ahmed Malik", description: "Damage to high-grade porcelain tiles due to transport negligence." },
-  { id: "DED-002", contractorId: "CON-002", contractorName: "Al-Farsi Electric", site: "ABO YARA Villa Project", amount: 1200, category: "Safety Fine", date: "2026-06-10", approvedBy: "Ahmed Malik", description: "Failure to comply with safety harness rules on Floor 3 facade." },
-  { id: "DED-003", contractorId: "CON-004", contractorName: "Gulf Plumbing Co.", site: "ABO YARA Villa Project", amount: 1500, category: "Cash Advance", date: "2026-06-05", approvedBy: "Hassan Usman", description: "Salary advance repayment - installment 1 of 3." },
-];
-
-const SEED_PAYMENTS = [
-  { id: "PAY-001", subcontractor: "Gulf Build Co.", project: "ABO YARA Villa Project", amount: 84000, date: "2026-06-14", channel: "Bank Transfer", status: "Cleared" },
-  { id: "PAY-002", subcontractor: "Al-Farsi Electric", project: "ABO YARA Villa Project", amount: 35000, date: "2026-06-12", channel: "Corporate Check", status: "Cleared" },
-  { id: "PAY-003", subcontractor: "Najd Steel & Metalworks", project: "Tower Block A", amount: 110000, date: "2026-06-10", channel: "Bank Transfer", status: "Pending Approval" },
-  { id: "PAY-004", subcontractor: "Al-Nour Finishes", project: "ABO YARA Villa Project", amount: 18400, date: "2026-06-08", channel: "Bank Transfer", status: "Cleared" },
-  { id: "PAY-005", subcontractor: "Gulf Plumbing Co.", project: "ABO YARA Villa Project", amount: 12000, date: "2026-06-05", channel: "Cash Account", status: "Cleared" },
-];
-
-const useContractorStore = create(
-  persist(
-    (set, get) => ({
-      contractors: SEED_CONTRACTORS,
-      deductions: SEED_DEDUCTIONS,
-      payments: SEED_PAYMENTS,
-
-      /* ── Contractors CRUD ────────────────────────────────────────── */
-      addContractor: (data) => {
-        const list = get().contractors;
-        const id = genId("CON", list);
-        const newItem = {
-          ...data,
-          id,
-          rating: data.rating || 5.0,
-          status: data.status || "Active",
-        };
-        set({ contractors: [...list, newItem] });
-        return newItem;
-      },
-
-      updateContractor: (id, data) => {
-        set((state) => ({
-          contractors: state.contractors.map((c) =>
-            c.id === id ? { ...c, ...data } : c
-          ),
-        }));
-      },
-
-      deleteContractor: (id) => {
-        set((state) => ({
-          contractors: state.contractors.filter((c) => c.id !== id),
-        }));
-      },
-
-      /* ── Deductions CRUD ─────────────────────────────────────────── */
-      addDeduction: (data) => {
-        const list = get().deductions;
-        const id = genId("DED", list);
-        const newItem = {
-          ...data,
-          id,
-          amount: Number(data.amount),
-        };
-        set({ deductions: [newItem, ...list] });
-        return newItem;
-      },
-
-      deleteDeduction: (id) => {
-        set((state) => ({
-          deductions: state.deductions.filter((d) => d.id !== id),
-        }));
-      },
-
-      /* ── Subcontractor Payments CRUD ─────────────────────────────── */
-      addPayment: (data) => {
-        const list = get().payments;
-        const id = genId("PAY", list);
-        const newItem = {
-          ...data,
-          id,
-          amount: Number(data.amount),
-          status: data.status || "Pending Approval",
-        };
-        set({ payments: [newItem, ...list] });
-        return newItem;
-      },
-
-      approvePayment: (id) => {
-        set((state) => ({
-          payments: state.payments.map((p) =>
-            p.id === id ? { ...p, status: "Cleared" } : p
-          ),
-        }));
-      },
-
-      rejectPayment: (id) => {
-        set((state) => ({
-          payments: state.payments.map((p) =>
-            p.id === id ? { ...p, status: "Rejected" } : p
-          ),
-        }));
-      },
-
-      deletePayment: (id) => {
-        set((state) => ({
-          payments: state.payments.filter((p) => p.id !== id),
-        }));
-      },
-    }),
-    {
-      name: "buildtrack-contractor-store-v1",
-      version: 1,
+  /* ── Fetch Data ──────────────────────────────────────────────── */
+  fetchContractorData: async () => {
+    if (get().loaded) return;
+    set({ loading: true });
+    try {
+      const response = await axios.get("/api/contractors");
+      const { contractors, deductions, payments } = response.data;
+      set({ contractors, deductions, payments, loaded: true });
+    } catch (error) {
+      console.error("fetchContractorData error:", error);
+      toast.error("Failed to load contractor data");
+    } finally {
+      set({ loading: false });
     }
-  )
-);
+  },
+
+  /* ── Contractors CRUD ────────────────────────────────────────── */
+  addContractor: async (data) => {
+    set({ loading: true });
+    try {
+      const response = await axios.post("/api/contractors", data);
+      const newItem = response.data;
+      set((state) => ({ contractors: [...state.contractors, newItem] }));
+      toast.success("Contractor partner registered successfully");
+      return newItem;
+    } catch (error) {
+      console.error("addContractor error:", error);
+      const errMsg = error.response?.data?.error || "Failed to register contractor";
+      toast.error(errMsg);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  updateContractor: async (id, data) => {
+    set({ loading: true });
+    try {
+      const response = await axios.put(`/api/contractors/${id}`, data);
+      const updatedItem = response.data;
+      set((state) => ({
+        contractors: state.contractors.map((c) => (c.id === id ? updatedItem : c)),
+      }));
+      toast.success("Contractor details updated");
+      return updatedItem;
+    } catch (error) {
+      console.error("updateContractor error:", error);
+      const errMsg = error.response?.data?.error || "Failed to update contractor";
+      toast.error(errMsg);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  deleteContractor: async (id) => {
+    set({ loading: true });
+    try {
+      await axios.delete(`/api/contractors/${id}`);
+      set((state) => ({
+        contractors: state.contractors.filter((c) => c.id !== id),
+        deductions: state.deductions.filter((d) => d.contractorId !== id),
+        // Since payments match by name, if we delete a contractor we keep payments or they are cascade deleted if mapped.
+        // But since standard cascade deletes associated payments on integer DB level:
+        // we can fetch fresh or filter them on client:
+      }));
+      // Refetch to sync any cascaded deletes in deductions/payments on DB level
+      const response = await axios.get("/api/contractors");
+      set({
+        contractors: response.data.contractors,
+        deductions: response.data.deductions,
+        payments: response.data.payments,
+      });
+      toast.success("Contractor profile removed");
+    } catch (error) {
+      console.error("deleteContractor error:", error);
+      toast.error("Failed to remove contractor profile");
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /* ── Deductions CRUD ─────────────────────────────────────────── */
+  addDeduction: async (data) => {
+    set({ loading: true });
+    try {
+      const response = await axios.post("/api/contractors/deductions", data);
+      const newItem = response.data;
+      set((state) => ({ deductions: [newItem, ...state.deductions] }));
+      toast.success("Contractor deduction logged successfully");
+      return newItem;
+    } catch (error) {
+      console.error("addDeduction error:", error);
+      const errMsg = error.response?.data?.error || "Failed to log deduction";
+      toast.error(errMsg);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  deleteDeduction: async (id) => {
+    set({ loading: true });
+    try {
+      await axios.delete(`/api/contractors/deductions/${id}`);
+      set((state) => ({
+        deductions: state.deductions.filter((d) => d.id !== id),
+      }));
+      toast.success("Deduction record removed");
+    } catch (error) {
+      console.error("deleteDeduction error:", error);
+      toast.error("Failed to remove deduction record");
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  /* ── Subcontractor Payments CRUD ─────────────────────────────── */
+  addPayment: async (data) => {
+    set({ loading: true });
+    try {
+      const response = await axios.post("/api/contractors/payments", data);
+      const newItem = response.data;
+      set((state) => ({ payments: [newItem, ...state.payments] }));
+      toast.success("Payment request submitted");
+      return newItem;
+    } catch (error) {
+      console.error("addPayment error:", error);
+      const errMsg = error.response?.data?.error || "Failed to submit payment request";
+      toast.error(errMsg);
+      throw error;
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  approvePayment: async (id) => {
+    set({ loading: true });
+    try {
+      const response = await axios.put(`/api/contractors/payments/${id}/approve`);
+      const updatedItem = response.data;
+      set((state) => ({
+        payments: state.payments.map((p) => (p.id === id ? updatedItem : p)),
+      }));
+      toast.success("Payment request approved & cleared");
+    } catch (error) {
+      console.error("approvePayment error:", error);
+      toast.error("Failed to approve payment");
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  rejectPayment: async (id) => {
+    set({ loading: true });
+    try {
+      const response = await axios.put(`/api/contractors/payments/${id}/reject`);
+      const updatedItem = response.data;
+      set((state) => ({
+        payments: state.payments.map((p) => (p.id === id ? updatedItem : p)),
+      }));
+      toast.error("Payment request rejected");
+    } catch (error) {
+      console.error("rejectPayment error:", error);
+      toast.error("Failed to reject payment");
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  deletePayment: async (id) => {
+    set({ loading: true });
+    try {
+      await axios.delete(`/api/contractors/payments/${id}`);
+      set((state) => ({
+        payments: state.payments.filter((p) => p.id !== id),
+      }));
+      toast.success("Payment record deleted");
+    } catch (error) {
+      console.error("deletePayment error:", error);
+      toast.error("Failed to delete payment record");
+    } finally {
+      set({ loading: false });
+    }
+  },
+}));
 
 export default useContractorStore;

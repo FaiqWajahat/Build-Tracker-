@@ -392,8 +392,8 @@ const useAssignmentStore = create(
       },
     }),
     {
-      name: "buildtrack-assignments-v1",
-      version: 1,
+      name: "buildtrack-assignments-v2",
+      version: 2,
     }
   )
 );

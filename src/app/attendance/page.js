@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import {
   CalendarDays, UserCheck, UserX, Clock, Search,
   Plus, ChevronLeft, ChevronRight, MoreHorizontal,
@@ -11,6 +11,10 @@ import {
 } from "lucide-react";
 import useLabourStore from "@/store/useLabourStore";
 import useProjectStore from "@/store/useProjectStore";
+import Loader from "@/components/ui/Loader";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import useUserStore from "@/store/useUserStore";
+import useSettingsStore from "@/store/useSettingsStore";
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 const SHIFT_CONFIG = {
@@ -35,7 +39,7 @@ const AVATAR_COLORS = [
 
 /* ─── Helpers ───────────────────────────────────────────────────────────── */
 function fmt(n) { return Number(n || 0).toLocaleString("en-SA", { maximumFractionDigits: 1 }); }
-function fmtCur(n) { return "SAR " + Number(n || 0).toLocaleString("en-SA", { maximumFractionDigits: 0 }); }
+function fmtCur(n, currency = "SAR") { return currency + " " + Number(n || 0).toLocaleString("en-US", { maximumFractionDigits: 0 }); }
 function initials(name) { return (name || "?").split(" ").slice(0, 2).map((w) => w[0]).join("").toUpperCase(); }
 function todayStr() { return new Date().toISOString().split("T")[0]; }
 
@@ -128,8 +132,7 @@ function MarkModal({ worker, date, existing, projects, onSave, onClose }) {
 
   const setF = (k, v) => setForm((f) => ({ ...f, [k]: v }));
 
-  const isDaily = worker?.payType === "daily";
-  const needsTimes = form.status !== "absent" && form.status !== "holiday" && isDaily;
+  const needsTimes = form.status !== "absent" && form.status !== "holiday" && form.status !== "leave";
 
   const hours = (!needsTimes)
     ? 0
@@ -322,8 +325,7 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
 
   function handleSave() {
     const entries = rows.filter((r) => r.included).map((r) => {
-      const isDaily = r.payType === "daily";
-      const needsTimes = r.status !== "absent" && r.status !== "holiday" && isDaily;
+      const needsTimes = r.status !== "absent" && r.status !== "holiday" && r.status !== "leave";
       const h = needsTimes ? calcHours(r.clockIn, r.clockOut, r.breakMinutes) : 0;
       return {
         workerId: r.workerId,
@@ -375,25 +377,21 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
                 ))}
               </div>
             </div>
-            {rows.some(r => r.payType === "daily") && (
-              <>
-                <div>
-                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Clock In</label>
-                  <input type="time" className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    value={globalClockIn} onChange={(e) => setGlobalClockIn(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Clock Out</label>
-                  <input type="time" className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    value={globalClockOut} onChange={(e) => setGlobalClockOut(e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Break (min)</label>
-                  <input type="number" min="0" max="120" className="w-20 px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                    value={globalBreak} onChange={(e) => setGlobalBreak(Number(e.target.value))} />
-                </div>
-              </>
-            )}
+            <div>
+              <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Clock In</label>
+              <input type="time" className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                value={globalClockIn} onChange={(e) => setGlobalClockIn(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Clock Out</label>
+              <input type="time" className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                value={globalClockOut} onChange={(e) => setGlobalClockOut(e.target.value)} />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Break (min)</label>
+              <input type="number" min="0" max="120" className="w-20 px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
+                value={globalBreak} onChange={(e) => setGlobalBreak(Number(e.target.value))} />
+            </div>
             <div>
               <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Project</label>
               <select className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
@@ -432,8 +430,7 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
 
           <div className="divide-y divide-border">
             {rows.map((row) => {
-              const isDaily = row.payType === "daily";
-              const needsTimes = row.status !== "absent" && row.status !== "holiday" && isDaily;
+              const needsTimes = row.status !== "absent" && row.status !== "holiday" && row.status !== "leave";
               const h = needsTimes ? calcHours(row.clockIn, row.clockOut, row.breakMinutes) : 0;
               const ot = needsTimes ? overtimeHours(h, row.shift) : 0;
               const sc = STATUS_CONFIG[row.status] || STATUS_CONFIG.present;
@@ -482,7 +479,7 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
                         value={row.clockOut || ""} onChange={(e) => setRow(row.workerId, "clockOut", e.target.value)} />
                     </div>
                   ) : (
-                    <span className="text-[11px] text-muted-foreground">{!isDaily ? "Monthly" : "—"}</span>
+                    <span className="text-[11px] text-muted-foreground">—</span>
                   )}
 
                   <div>
@@ -526,13 +523,14 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
 }
 
 /* ─── Daily Roll Call View ──────────────────────────────────────────────── */
-function DailyView({ date, workers, attendance, projects, teams }) {
+function DailyView({ date, workers, attendance, projects, teams, isReadOnly }) {
   const { addAttendance, bulkMarkAttendance, updateAttendance, deleteAttendance } = useLabourStore();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [projectFilter, setProjectFilter] = useState("All");
   const [markModal, setMarkModal] = useState(null); // worker object
   const [showBulk, setShowBulk] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   const dayRecords = useMemo(() =>
     attendance.filter((a) => a.date === date),
@@ -611,7 +609,8 @@ function DailyView({ date, workers, attendance, projects, teams }) {
         <span className="text-xs text-muted-foreground ml-auto">{enriched.length} workers</span>
         <button
           onClick={() => setShowBulk(true)}
-          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity shadow-sm"
+          disabled={isReadOnly}
+          className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity shadow-sm disabled:opacity-50 disabled:cursor-not-allowed border-none"
         >
           <CheckSquare size={13} /> Bulk Mark
         </button>
@@ -668,16 +667,14 @@ function DailyView({ date, workers, attendance, projects, teams }) {
 
                 {/* Shift */}
                 <div>
-                  {worker.payType === "monthly" ? (
-                    <span className="text-[10px] text-muted-foreground">Monthly</span>
-                  ) : sh ? (
+                  {sh ? (
                     <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${sh.bg} ${sh.color}`}>{sh.label}</span>
                   ) : <span className="text-[10px] text-muted-foreground">—</span>}
                 </div>
 
                 {/* Clock In */}
                 <div className="flex items-center gap-1.5 text-xs">
-                  {worker.payType === "monthly" ? <span className="text-muted-foreground">—</span> : rec?.clockIn ? (
+                  {rec?.clockIn ? (
                     <>
                       <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shrink-0" />
                       <span className="font-mono font-semibold text-foreground">{rec.clockIn}</span>
@@ -687,7 +684,7 @@ function DailyView({ date, workers, attendance, projects, teams }) {
 
                 {/* Clock Out */}
                 <div className="flex items-center gap-1.5 text-xs">
-                  {worker.payType === "monthly" ? <span className="text-muted-foreground">—</span> : rec?.clockOut ? (
+                  {rec?.clockOut ? (
                     <>
                       <div className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
                       <span className="font-mono font-semibold text-foreground">{rec.clockOut}</span>
@@ -696,28 +693,30 @@ function DailyView({ date, workers, attendance, projects, teams }) {
                 </div>
 
                 {/* Hours */}
-                <div className={`text-sm font-bold ${(worker.payType !== "monthly" && rec?.hoursWorked > 0) ? "text-foreground" : "text-muted-foreground"}`}>
-                  {(worker.payType !== "monthly" && rec?.hoursWorked > 0) ? fmt(rec.hoursWorked) + "h" : "—"}
+                <div className={`text-sm font-bold ${(rec?.hoursWorked > 0) ? "text-foreground" : "text-muted-foreground"}`}>
+                  {(rec?.hoursWorked > 0) ? fmt(rec.hoursWorked) + "h" : "—"}
                 </div>
 
                 {/* OT */}
-                <div className={`text-sm font-bold ${(worker.payType !== "monthly" && rec?.overtime > 0) ? "text-amber-500" : "text-muted-foreground"}`}>
-                  {(worker.payType !== "monthly" && rec?.overtime > 0) ? "+" + fmt(rec.overtime) + "h" : "—"}
+                <div className={`text-sm font-bold ${(rec?.overtime > 0) ? "text-amber-500" : "text-muted-foreground"}`}>
+                  {(rec?.overtime > 0) ? "+" + fmt(rec.overtime) + "h" : "—"}
                 </div>
 
                 {/* Action */}
                 <div className="flex gap-1">
                   <button
+                    disabled={isReadOnly}
                     onClick={() => setMarkModal(worker)}
-                    className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors"
+                    className="p-1.5 rounded-lg hover:bg-primary/10 transition-colors disabled:opacity-30 disabled:cursor-not-allowed border-none"
                     title={rec ? "Edit record" : "Mark attendance"}
                   >
                     {rec ? <Edit2 size={12} className="text-primary" /> : <Plus size={12} className="text-muted-foreground" />}
                   </button>
                   {rec && (
                     <button
-                      onClick={() => deleteAttendance(rec.id)}
-                      className="p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100"
+                      disabled={isReadOnly}
+                      onClick={() => setDeleteTarget({ id: rec.id, name: `${worker.name} - ${fmtDate(date)} (${rec.status})` })}
+                      className="p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors opacity-0 group-hover:opacity-100 disabled:opacity-0 border-none"
                     >
                       <Trash2 size={12} className="text-rose-500" />
                     </button>
@@ -756,6 +755,15 @@ function DailyView({ date, workers, attendance, projects, teams }) {
           onSave={(entries) => { bulkMarkAttendance(entries); setShowBulk(false); }}
         />
       )}
+
+      <DeleteConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={() => deleteAttendance(deleteTarget.id)}
+        title="Delete Attendance Record"
+        description="Are you sure you want to delete this attendance record? This action cannot be undone."
+        itemName={deleteTarget?.name}
+      />
     </div>
   );
 }
@@ -972,6 +980,7 @@ function HourlyView({ date, workers, attendance, projects }) {
 
 /* ─── Monthly Report View ───────────────────────────────────────────────── */
 function ReportView({ workers, attendance, projects }) {
+  const currency = useSettingsStore((s) => s.settings.currency);
   const now = new Date();
   const [month, setMonth] = useState(now.getMonth());
   const [year, setYear] = useState(now.getFullYear());
@@ -1053,7 +1062,7 @@ function ReportView({ workers, attendance, projects }) {
         {[
           { label: "Active Workers", value: activeWorkers.length, color: "text-blue-600", bg: "bg-blue-500/10" },
           { label: "Avg Attendance", value: `${avgAttRate}%`, color: "text-emerald-600", bg: "bg-emerald-500/10" },
-          { label: "Total Payroll", value: fmtCur(totalPayroll), color: "text-purple-600", bg: "bg-purple-500/10" },
+          { label: "Total Payroll", value: fmtCur(totalPayroll, currency), color: "text-purple-600", bg: "bg-purple-500/10" },
           { label: "Work Days", value: daysInMonth.length, color: "text-amber-600", bg: "bg-amber-500/10" },
         ].map((k) => (
           <div key={k.label} className={`rounded-2xl px-5 py-4 ${k.bg}`}>
@@ -1102,7 +1111,7 @@ function ReportView({ workers, attendance, projects }) {
                     {totalOT > 0 ? `+${fmt(totalOT)}h` : "—"}
                   </div>
                   <div className={`text-sm font-bold ${attColor}`}>{attRate}%</div>
-                  <div className="text-sm font-bold text-foreground">{fmtCur(payable)}</div>
+                  <div className="text-sm font-bold text-foreground">{fmtCur(payable, currency)}</div>
                 </div>
               );
             })}
@@ -1117,7 +1126,7 @@ function ReportView({ workers, attendance, projects }) {
               <div className="text-sm font-bold text-foreground">{fmt(report.reduce((s, r) => s + r.totalH, 0))}h</div>
               <div className="text-sm font-bold text-amber-500">+{fmt(report.reduce((s, r) => s + r.totalOT, 0))}h</div>
               <div className="text-sm font-bold text-foreground">{avgAttRate}%</div>
-              <div className="text-sm font-bold text-purple-600">{fmtCur(totalPayroll)}</div>
+              <div className="text-sm font-bold text-purple-600">{fmtCur(totalPayroll, currency)}</div>
             </div>
           </div>
         </div>
@@ -1171,10 +1180,16 @@ function ReportView({ workers, attendance, projects }) {
 
 /* ─── Main Attendance Page ──────────────────────────────────────────────── */
 export default function AttendancePage() {
-  const { workers, attendance, teams } = useLabourStore();
+  const { workers, attendance, teams, fetchLabourData, loading, loaded } = useLabourStore();
   const { projects } = useProjectStore();
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const [date, setDate] = useState(todayStr());
   const [view, setView] = useState("daily"); // daily | hourly | report
+
+  useEffect(() => {
+    fetchLabourData();
+  }, [fetchLabourData]);
 
   const VIEWS = [
     { key: "daily",  label: "Daily Roll Call", icon: UserCheck },
@@ -1187,7 +1202,12 @@ export default function AttendancePage() {
   const activeCount = workers.filter((w) => w.status === "Active").length;
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto bg-background">
+    <div className="flex-1 min-h-0 overflow-y-auto bg-background relative">
+      {loading && (
+        <Loader 
+          message={!loaded ? "Loading attendance data..." : "Saving..."} 
+        />
+      )}
       <div className="max-w-7xl mx-auto px-6 py-6">
         {/* Page header */}
         <div className="flex items-start justify-between mb-6 flex-wrap gap-3">
@@ -1223,7 +1243,7 @@ export default function AttendancePage() {
 
         {/* View content */}
         {view === "daily" && (
-          <DailyView date={date} workers={workers} attendance={attendance} projects={projects} teams={teams} />
+          <DailyView date={date} workers={workers} attendance={attendance} projects={projects} teams={teams} isReadOnly={isReadOnly} />
         )}
         {view === "hourly" && (
           <HourlyView date={date} workers={workers} attendance={attendance} projects={projects} />

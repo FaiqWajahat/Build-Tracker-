@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   Plus, X, Check, ChevronDown, ChevronUp, ChevronRight, Search, Layers,
   Home, FolderOpen, User, Trash2, AlertCircle,
@@ -12,6 +12,7 @@ import useAssignmentStore from "@/store/useAssignmentStore";
 import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
 import useScopeStore from "@/store/useScopeStore";
 import useProgressStore from "@/store/useProgressStore";
+import useUserStore from "@/store/useUserStore";
 
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
 const pct = (done, total) => (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
@@ -47,7 +48,7 @@ const TRADE_ICONS = {
   "Architectural & Finishes": "🎨",
   "MEP – Electrical": "⚡",
   "MEP – Plumbing": "🚰",
-  "MEP – Mechanical (HVAC)": "♨️",
+  "MEP – Mechanical": "♨️",
   "MEP – Fire Fighting": "🔥",
   "External Works": "🌿",
   "Facade & Envelope": "🏛️",
@@ -72,7 +73,12 @@ export default function AssignmentsTab({ projectId }) {
   const updateAssignment = useAssignmentStore((s) => s.updateAssignment);
   const deleteAssignment = useAssignmentStore((s) => s.deleteAssignment);
   const scopes         = useScopeStore((s) => s.scopes);
+  const fetchScopes    = useScopeStore((s) => s.fetchScopes);
   const allLogs        = useProgressStore((s) => s.logs);
+
+  useEffect(() => {
+    fetchScopes();
+  }, [fetchScopes]);
 
   const assignments = useMemo(() => allAssignments.filter((a) => a.projectId === projectId), [allAssignments, projectId]);
   const logs        = useMemo(() => allLogs.filter((l) => l.projectId === projectId), [allLogs, projectId]);
@@ -81,6 +87,8 @@ export default function AssignmentsTab({ projectId }) {
   const [showWizard, setShowWizard] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterTrade, setFilterTrade] = useState("All");
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
 
   const selectedAssignment = assignments.find((a) => a.id === selectedId);
   const phases = project?.phases || [];
@@ -128,12 +136,14 @@ export default function AssignmentsTab({ projectId }) {
             {assignments.length} scope{assignments.length !== 1 ? "s" : ""} assigned · project / phase / unit level
           </p>
         </div>
-        <button
-          onClick={() => setShowWizard(true)}
-          className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all shadow-sm cursor-pointer"
-        >
-          <Plus size={14} /> Assign Scope
-        </button>
+        {!isReadOnly && (
+          <button
+            onClick={() => setShowWizard(true)}
+            className="flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all shadow-sm cursor-pointer"
+          >
+            <Plus size={14} /> Assign Scope
+          </button>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 min-h-[600px]">
@@ -227,9 +237,11 @@ export default function AssignmentsTab({ projectId }) {
                 <Layers size={28} className="mx-auto text-muted-foreground/20 mb-3" />
                 <p className="text-xs font-semibold text-foreground mb-1">No scopes assigned yet</p>
                 <p className="text-[11px] text-muted-foreground mb-3">Assign scopes to start tracking progress</p>
-                <button onClick={() => setShowWizard(true)} className="text-xs font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer">
-                  + Assign first scope
-                </button>
+                {!isReadOnly && (
+                  <button onClick={() => setShowWizard(true)} className="text-xs font-bold text-primary hover:text-primary/80 transition-colors cursor-pointer">
+                    + Assign first scope
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -246,6 +258,7 @@ export default function AssignmentsTab({ projectId }) {
               units={units}
               computeTotals={computeTotals}
               getPhaseColor={getPhaseColor}
+              isReadOnly={isReadOnly}
               onUpdate={(data) => updateAssignment(selectedAssignment.id, data)}
               onDelete={() => {
                 deleteAssignment(selectedAssignment.id);
@@ -285,7 +298,7 @@ export default function AssignmentsTab({ projectId }) {
 }
 
 /* ─── Assignment Detail Panel ─────────────────────────────────────────── */
-function AssignmentDetail({ assignment: a, project, logs, phases, units, computeTotals, getPhaseColor, onUpdate, onDelete }) {
+function AssignmentDetail({ assignment: a, project, logs, phases, units, computeTotals, getPhaseColor, isReadOnly, onUpdate, onDelete }) {
   const [expandedUnit, setExpandedUnit] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -343,27 +356,29 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {confirmDelete ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] text-rose-500 font-semibold">Confirm?</span>
-                  <button onClick={onDelete} className="px-3 py-1.5 text-xs font-bold bg-rose-500 text-white rounded-lg cursor-pointer hover:bg-rose-600 transition-colors">
-                    Delete
+            {!isReadOnly && (
+              <div className="flex items-center gap-2 shrink-0">
+                {confirmDelete ? (
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] text-rose-500 font-semibold">Confirm?</span>
+                    <button onClick={onDelete} className="px-3 py-1.5 text-xs font-bold bg-rose-500 text-white rounded-lg cursor-pointer hover:bg-rose-600 transition-colors">
+                      Delete
+                    </button>
+                    <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 text-xs font-semibold bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors text-foreground">
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setConfirmDelete(true)}
+                    className="p-2 rounded-lg hover:bg-rose-500/10 text-rose-500 cursor-pointer transition-colors"
+                    title="Delete assignment"
+                  >
+                    <Trash2 size={14} />
                   </button>
-                  <button onClick={() => setConfirmDelete(false)} className="px-3 py-1.5 text-xs font-semibold bg-muted rounded-lg cursor-pointer hover:bg-muted/80 transition-colors text-foreground">
-                    Cancel
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setConfirmDelete(true)}
-                  className="p-2 rounded-lg hover:bg-rose-500/10 text-rose-500 cursor-pointer transition-colors"
-                  title="Delete assignment"
-                >
-                  <Trash2 size={14} />
-                </button>
-              )}
-            </div>
+                )}
+              </div>
+            )}
           </div>
 
           {/* KPI Row */}
@@ -661,8 +676,6 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
     level: "unit",
     scopeId: "",
     scopeName: "",
-    subScopeId: "",
-    subScopeName: "",
     trade: "",
     tradeIcon: "🏗️",
     uom: "",
@@ -684,8 +697,7 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
     const filtered = scopes.filter((s) =>
       !q ||
       s.name.toLowerCase().includes(q) ||
-      s.trade.toLowerCase().includes(q) ||
-      s.subScopes?.some((ss) => ss.name.toLowerCase().includes(q))
+      s.trade.toLowerCase().includes(q)
     );
     return filtered.reduce((acc, s) => {
       if (!acc[s.trade]) acc[s.trade] = [];
@@ -695,24 +707,20 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
   }, [scopes, scopeSearch]);
 
   const toggleTrade = (trade) => setExpandedTrades((t) => ({ ...t, [trade]: !t[trade] }));
-  const toggleScope = (scopeId) => setExpandedScopes((s) => ({ ...s, [scopeId]: !s[scopeId] }));
 
-  const selectScope = (scope, subScope = null) => {
+  const selectScope = (scope) => {
     setForm((f) => ({
       ...f,
       scopeId:      scope.id,
       scopeName:    scope.name,
-      subScopeId:   subScope?.id   || "",
-      subScopeName: subScope?.name || "",
       trade:        scope.trade,
       tradeIcon:    TRADE_ICONS[scope.trade] || "🏗️",
-      uom:          subScope?.uom || scope.uom,
+      uom:          scope.uom,
     }));
   };
 
-  const isSelected = (scopeId, subScopeId = null) => {
-    if (subScopeId) return form.scopeId === scopeId && form.subScopeId === subScopeId;
-    return form.scopeId === scopeId && !form.subScopeId;
+  const isSelected = (scopeId) => {
+    return form.scopeId === scopeId;
   };
 
   const updatePhaseQty = (phaseId, qty) =>
@@ -828,14 +836,14 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                 </div>
               </div>
 
-              {/* Scope + Sub-scope picker */}
+              {/* Scope picker */}
               <div>
                 <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-foreground">Select Scope / Sub-Scope</p>
+                  <p className="text-xs font-bold text-foreground">Select Scope</p>
                   {form.scopeName && (
                     <div className="flex items-center gap-1 text-[10.5px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
                       <Check size={10} />
-                      {form.scopeName}{form.subScopeName ? ` → ${form.subScopeName}` : ""}
+                      {form.scopeName}
                     </div>
                   )}
                 </div>
@@ -844,7 +852,7 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                   <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Search scope or sub-scope..."
+                    placeholder="Search scope..."
                     value={scopeSearch}
                     onChange={(e) => setScopeSearch(e.target.value)}
                     className="w-full pl-7 pr-2 py-1.5 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring"
@@ -873,9 +881,7 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                           </button>
 
                           {isTradeOpen && tradeScopes.map((scope) => {
-                            const hasSubScopes = scope.subScopes && scope.subScopes.length > 0;
-                            const isScopeOpen  = expandedScopes[scope.id];
-                            const scopeSelected = isSelected(scope.id) && !form.subScopeId;
+                            const scopeSelected = isSelected(scope.id);
 
                             return (
                               <div key={scope.id} className="border-t border-border/40">
@@ -894,47 +900,7 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                                     </span>
                                     <span className="text-[10px] font-mono text-muted-foreground">{scope.uom}</span>
                                   </button>
-
-                                  {/* Expand toggle for sub-scopes */}
-                                  {hasSubScopes && (
-                                    <button
-                                      onClick={() => toggleScope(scope.id)}
-                                      className="px-3 py-2 text-muted-foreground hover:text-foreground hover:bg-muted/40 transition-colors cursor-pointer"
-                                      title={isScopeOpen ? "Collapse sub-scopes" : "Show sub-scopes"}
-                                    >
-                                      {isScopeOpen ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
-                                    </button>
-                                  )}
                                 </div>
-
-                                {/* Sub-scopes */}
-                                {hasSubScopes && isScopeOpen && (
-                                  <div className="bg-muted/10 border-t border-border/30 pl-8 pr-3 py-1 space-y-0.5">
-                                    {scope.subScopes.map((ss) => {
-                                      const ssSelected = isSelected(scope.id, ss.id);
-                                      return (
-                                        <button
-                                          key={ss.id}
-                                          onClick={() => selectScope(scope, ss)}
-                                          className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-left cursor-pointer transition-all
-                                            ${ssSelected
-                                              ? "bg-primary/10 border border-primary/20"
-                                              : "hover:bg-muted/50 border border-transparent"}`}
-                                        >
-                                          <ChevronRight size={10} className={ssSelected ? "text-primary" : "text-muted-foreground/40"} />
-                                          <div className={`w-3.5 h-3.5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                                            ${ssSelected ? "border-primary bg-primary" : "border-border"}`}>
-                                            {ssSelected && <div className="w-1 h-1 bg-primary-foreground rounded-full" />}
-                                          </div>
-                                          <span className={`text-[11.5px] flex-1 font-medium ${ssSelected ? "text-primary font-semibold" : "text-muted-foreground"}`}>
-                                            {ss.name}
-                                          </span>
-                                          <span className="text-[10px] font-mono text-muted-foreground/70">{ss.uom || scope.uom}</span>
-                                        </button>
-                                      );
-                                    })}
-                                  </div>
-                                )}
                               </div>
                             );
                           })}

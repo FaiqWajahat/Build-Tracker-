@@ -63,11 +63,6 @@ export const SCOPE_ASSIGNMENTS = [
     assignee: { type: "sub", name: "Al-Farsi Electric" },
     clientRate: 25, subRate: 18,
     totalQty: 9360, doneQty: 7205,
-    subScopes: [
-      { id: "SS-1-1", name: "Phase Wiring", uom: "LM", qty: 6460, done: 5168 },
-      { id: "SS-1-2", name: "Earth Wiring", uom: "LM", qty: 1730, done: 1557 },
-      { id: "SS-1-3", name: "DB Wiring",    uom: "LM", qty: 1170, done:  480 },
-    ],
     phaseBreakdown: [
       { phaseId: "PA", phaseName: "Phase A", qty: 5200, done: 4200 },
       { phaseId: "PB", phaseName: "Phase B", qty: 3000, done: 2400 },
@@ -99,10 +94,6 @@ export const SCOPE_ASSIGNMENTS = [
     assignee: { type: "sub", name: "Gulf Plumbing" },
     clientRate: 35, subRate: 25,
     totalQty: 1280, doneQty: 736,
-    subScopes: [
-      { id: "SS-3-1", name: "Cold Water Piping", uom: "LM", qty: 800, done: 460 },
-      { id: "SS-3-2", name: "Hot Water Piping",  uom: "LM", qty: 480, done: 276 },
-    ],
     unitBreakdown: [
       u("A1","PA",80,80), u("A2","PA",80,80), u("A3","PA",80,80), u("A4","PA",80,80),
       u("A5","PA",80,80), u("A6","PA",80,80), u("A7","PA",80,56), u("A8","PA",80, 0),
@@ -120,10 +111,6 @@ export const SCOPE_ASSIGNMENTS = [
     assignee: { type: "team", name: "Team Alpha" },
     clientRate: 45, subRate: null,
     totalQty: 13800, doneQty: 7590,
-    subScopes: [
-      { id: "SS-4-1", name: "External Walls",      uom: "m²", qty: 8280, done: 4554 },
-      { id: "SS-4-2", name: "Internal Partitions", uom: "m²", qty: 5520, done: 3036 },
-    ],
     // floors: GF=350, FF=350, RF=200 (Phase C has no RF → GF+FF=700)
     unitBreakdown: [
       { unitId:"A1", phaseId:"PA", qty:900, done:900, floors:{ GF:{qty:350,done:350}, FF:{qty:350,done:350}, RF:{qty:200,done:200} } },
@@ -154,10 +141,6 @@ export const SCOPE_ASSIGNMENTS = [
     assignee: { type: "sub", name: "Al-Nour Finishes" },
     clientRate: 28, subRate: 22,
     totalQty: 24000, doneQty: 14880,
-    subScopes: [
-      { id: "SS-5-1", name: "Walls Plaster",   uom: "m²", qty: 18000, done: 11160 },
-      { id: "SS-5-2", name: "Ceiling Plaster", uom: "m²", qty:  6000, done:  3720 },
-    ],
     unitBreakdown: [
       u("A1","PA",1500,1500), u("A2","PA",1500,1500), u("A3","PA",1500,1350), u("A4","PA",1500,1200),
       u("A5","PA",1500,1050), u("A6","PA",1500, 900), u("A7","PA",1500, 750), u("A8","PA",1500, 600),
@@ -173,10 +156,6 @@ export const SCOPE_ASSIGNMENTS = [
     assignee: { type: "sub", name: "Al-Nour Finishes" },
     clientRate: 22, subRate: 16,
     totalQty: 24000, doneQty: 6720,
-    subScopes: [
-      { id: "SS-6-1", name: "Internal Painting", uom: "m²", qty: 18000, done: 5040 },
-      { id: "SS-6-2", name: "External Painting", uom: "m²", qty:  6000, done: 1680 },
-    ],
     unitBreakdown: [
       u("A1","PA",1500, 900), u("A2","PA",1500, 825), u("A3","PA",1500, 750), u("A4","PA",1500, 675),
       u("A5","PA",1500, 450), u("A6","PA",1500, 300), u("A7","PA",1500, 150), u("A8","PA",1500,   0),

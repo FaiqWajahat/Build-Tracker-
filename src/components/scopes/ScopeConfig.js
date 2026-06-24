@@ -7,7 +7,7 @@ export const TRADES = [
   { value: "Architectural & Finishes", icon: "🎨", color: "bg-purple-500/15 text-purple-600 dark:text-purple-400 border-purple-500/25" },
   { value: "MEP – Electrical",         icon: "⚡", color: "bg-amber-500/15 text-amber-600 dark:text-amber-400 border-amber-500/25" },
   { value: "MEP – Plumbing",           icon: "🚰", color: "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 border-cyan-500/25" },
-  { value: "MEP – Mechanical (HVAC)",  icon: "❄️", color: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/25" },
+  { value: "MEP – Mechanical",  icon: "❄️", color: "bg-sky-500/15 text-sky-600 dark:text-sky-400 border-sky-500/25" },
   { value: "MEP – Fire Fighting",      icon: "🧯", color: "bg-rose-500/15 text-rose-600 dark:text-rose-400 border-rose-500/25" },
   { value: "Facade & Envelope",        icon: "🪟", color: "bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border-indigo-500/25" },
   { value: "External Works",           icon: "🌿", color: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border-emerald-500/25" },

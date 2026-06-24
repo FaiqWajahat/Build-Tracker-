@@ -6,8 +6,10 @@ import {
   Search, Filter, Plus, FileDown, Check, X,
   DollarSign, Calendar, MapPin
 } from "lucide-react";
+import useUserStore from "@/store/useUserStore";
 import useContractorStore from "@/store/useContractorStore";
 import useProjectStore from "@/store/useProjectStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const statusStyles = {
   "Cleared":          "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
@@ -16,8 +18,11 @@ const statusStyles = {
 };
 
 export default function SubPaymentsPage() {
+  const currency = useCurrency();
   const contractors = useContractorStore((s) => s.contractors);
   const payments = useContractorStore((s) => s.payments);
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const addPayment = useContractorStore((s) => s.addPayment);
   const approvePayment = useContractorStore((s) => s.approvePayment);
   const rejectPayment = useContractorStore((s) => s.rejectPayment);
@@ -83,10 +88,10 @@ export default function SubPaymentsPage() {
       {/* Metrics Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
         {[
-          { label: "Disbursed MTD", value: `SAR ${stats.totalDisbursed.toLocaleString()}`, icon: CreditCard, colorClass: "text-emerald-600 bg-emerald-500/10" },
-          { label: "Disbursed YTD (Est)", value: "SAR 1.48M", icon: DollarSign, colorClass: "text-blue-600 bg-blue-500/10" },
+          { label: "Disbursed MTD", value: `${currency} ${stats.totalDisbursed.toLocaleString()}`, icon: CreditCard, colorClass: "text-emerald-600 bg-emerald-500/10" },
+          { label: "Disbursed YTD (Est)", value: `${currency} 1.48M`, icon: DollarSign, colorClass: "text-blue-600 bg-blue-500/10" },
           { label: "Pending Sign-off", value: `${stats.pendingApprovals} Payments`, icon: Clock, colorClass: "text-amber-600 bg-amber-500/10" },
-          { label: "Pending Release Val", value: `SAR ${stats.totalPendingVal.toLocaleString()}`, icon: DollarSign, colorClass: "text-purple-600 bg-purple-500/10" },
+          { label: "Pending Release Val", value: `${currency} ${stats.totalPendingVal.toLocaleString()}`, icon: DollarSign, colorClass: "text-purple-600 bg-purple-500/10" },
         ].map((stat, idx) => {
           const Icon = stat.icon;
           return (
@@ -130,12 +135,14 @@ export default function SubPaymentsPage() {
             <option value="Rejected">Rejected</option>
           </select>
 
-          <button
-            onClick={() => setShowLogModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
-          >
-            <Plus size={14} /> Record Payment
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setShowLogModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/95 transition-all shadow-xs cursor-pointer"
+            >
+              <Plus size={14} /> Record Payment
+            </button>
+          )}
         </div>
       </div>
 
@@ -170,7 +177,7 @@ export default function SubPaymentsPage() {
                     <MapPin size={11} className="text-muted-foreground" />
                     {p.project}
                   </span>
-                  <span className="text-[13px] font-bold text-foreground">SAR {p.amount?.toLocaleString()}</span>
+                  <span className="text-[13px] font-bold text-foreground">{currency} {p.amount?.toLocaleString()}</span>
                   <span className="text-[12px] text-muted-foreground flex items-center gap-1">
                     <Calendar size={11} />
                     {p.date}
@@ -181,34 +188,36 @@ export default function SubPaymentsPage() {
                       {p.status}
                     </span>
                   </div>
-                  <div className="flex items-center justify-end gap-1.5">
-                    {p.status === "Pending Approval" ? (
-                      <>
+                  {!isReadOnly && (
+                    <div className="flex items-center justify-end gap-1.5">
+                      {p.status === "Pending Approval" ? (
+                        <>
+                          <button
+                            onClick={() => approvePayment(p.id)}
+                            title="Approve Payment"
+                            className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer border-none transition-colors"
+                          >
+                            <Check size={12} />
+                          </button>
+                          <button
+                            onClick={() => rejectPayment(p.id)}
+                            title="Reject Payment"
+                            className="p-1 rounded bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 cursor-pointer border-none transition-colors"
+                          >
+                            <X size={12} />
+                          </button>
+                        </>
+                      ) : (
                         <button
-                          onClick={() => approvePayment(p.id)}
-                          title="Approve Payment"
-                          className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer border-none transition-colors"
+                          onClick={() => deletePayment(p.id)}
+                          title="Delete Record"
+                          className="px-2 py-1 text-[11px] font-bold rounded bg-muted hover:bg-rose-500/10 hover:text-rose-500 text-muted-foreground cursor-pointer border-none transition-colors"
                         >
-                          <Check size={12} />
+                          Delete
                         </button>
-                        <button
-                          onClick={() => rejectPayment(p.id)}
-                          title="Reject Payment"
-                          className="p-1 rounded bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 cursor-pointer border-none transition-colors"
-                        >
-                          <X size={12} />
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        onClick={() => deletePayment(p.id)}
-                        title="Delete Record"
-                        className="px-2 py-1 text-[11px] font-bold rounded bg-muted hover:bg-rose-500/10 hover:text-rose-500 text-muted-foreground cursor-pointer border-none transition-colors"
-                      >
-                        Delete
-                      </button>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
@@ -261,7 +270,7 @@ export default function SubPaymentsPage() {
               </div>
 
               <div>
-                <label className="text-[10px] uppercase font-bold text-muted-foreground">Payment Amount (SAR)</label>
+                <label className="text-[10px] uppercase font-bold text-muted-foreground">Payment Amount ({currency})</label>
                 <input
                   type="number"
                   value={form.amount}

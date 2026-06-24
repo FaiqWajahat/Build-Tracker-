@@ -1,12 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { X, Plus } from "lucide-react";
 import useContractorStore from "@/store/useContractorStore";
 import useProjectStore from "@/store/useProjectStore";
 import ContractorDirectory from "@/components/contractor/ContractorDirectory";
 import ContractorProjectsPanel from "@/components/contractor/ContractorProjectsPanel";
 import ContractorProjectDetail from "@/components/contractor/ContractorProjectDetail";
+import Loader from "@/components/ui/Loader";
+import useUserStore from "@/store/useUserStore";
 
 /*
   Navigation state machine:
@@ -16,8 +18,33 @@ import ContractorProjectDetail from "@/components/contractor/ContractorProjectDe
 */
 
 export default function ContractorsPage() {
-  const addContractor = useContractorStore((s) => s.addContractor);
+  const {
+    contractors,
+    addContractor,
+    fetchContractorData,
+    loading,
+    loaded
+  } = useContractorStore();
   const projects = useProjectStore((s) => s.projects);
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
+
+  useEffect(() => {
+    fetchContractorData();
+  }, [fetchContractorData]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && contractors.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const contractorId = params.get("contractorId");
+      if (contractorId) {
+        const found = contractors.find(c => c.id === contractorId || c.display_id === contractorId);
+        if (found) {
+          setNav({ view: "projects", contractor: found, projectGroup: null });
+        }
+      }
+    }
+  }, [contractors]);
 
   const [nav, setNav] = useState({ view: "directory", contractor: null, projectGroup: null });
   const [showAddModal, setShowAddModal] = useState(false);
@@ -37,11 +64,17 @@ export default function ContractorsPage() {
   };
 
   return (
-    <>
+    <div className="flex-1 min-h-0 overflow-y-auto bg-background relative">
+      {loading && (
+        <Loader 
+          message={!loaded ? "Loading contractors..." : "Updating ledger..."} 
+        />
+      )}
       {nav.view === "directory" && (
         <ContractorDirectory
           onSelectContractor={goToContractor}
-          onAddContractor={() => setShowAddModal(true)}
+          onAddContractor={() => !isReadOnly && setShowAddModal(true)}
+          isReadOnly={isReadOnly}
         />
       )}
 
@@ -102,7 +135,7 @@ export default function ContractorsPage() {
                     <option>Structural Steel</option>
                     <option>MEP – Electrical</option>
                     <option>MEP – Plumbing</option>
-                    <option>MEP – Mechanical (HVAC)</option>
+                    <option>MEP – Mechanical</option>
                     <option>MEP – Fire Fighting</option>
                     <option>External Works</option>
                     <option>Facade & Envelope</option>
@@ -164,6 +197,6 @@ export default function ContractorsPage() {
           </div>
         </div>
       )}
-    </>
+    </div>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   X, ChevronDown, Plus, Trash2, Layers, Target,
   Calendar, FileText, Hash, DollarSign, AlertTriangle
@@ -8,13 +8,14 @@ import {
 import useProjectStore from "@/store/useProjectStore";
 import useScopeStore from "@/store/useScopeStore";
 import useAssignmentStore from "@/store/useAssignmentStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const TRADE_ICONS = {
   "Civil & Structural": "🏗️",
   "Architectural & Finishes": "🎨",
   "MEP – Electrical": "⚡",
   "MEP – Plumbing": "🚰",
-  "MEP – Mechanical (HVAC)": "❄️",
+  "MEP – Mechanical": "❄️",
   "MEP – Fire Fighting": "🔥",
   "External Works": "🌿",
   "Facade & Envelope": "🏢",
@@ -27,9 +28,15 @@ const TRADE_ICONS = {
 const STEP_LABELS = ["Project & Scope", "Level & Qty", "Rates & Dates", "Review"];
 
 export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
+  const currency = useCurrency();
   const projects = useProjectStore((s) => s.projects);
   const scopes = useScopeStore((s) => s.scopes);
+  const fetchScopes = useScopeStore((s) => s.fetchScopes);
   const addAssignment = useAssignmentStore((s) => s.addAssignment);
+
+  useEffect(() => {
+    fetchScopes();
+  }, [fetchScopes]);
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -244,7 +251,7 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
                     <span className="text-base">{TRADE_ICONS[selectedScope.trade] || "📋"}</span>
                     <div>
                       <p className="font-bold text-foreground">{selectedScope.name}</p>
-                      <p className="text-muted-foreground">{selectedScope.trade} · UOM: {selectedScope.uom} · {selectedScope.subScopes?.length || 0} sub-scopes</p>
+                      <p className="text-muted-foreground">{selectedScope.trade} · UOM: {selectedScope.uom}</p>
                     </div>
                   </div>
                 )}
@@ -379,7 +386,7 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">
-                    Sub-Contractor Rate (SAR / {selectedScope?.uom || "unit"}) *
+                    Sub-Contractor Rate ({currency} / {selectedScope?.uom || "unit"}) *
                   </label>
                   <input
                     type="number"
@@ -393,7 +400,7 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
                 </div>
                 <div>
                   <label className="text-[10px] uppercase font-bold text-muted-foreground mb-1 block">
-                    Client Rate (SAR / {selectedScope?.uom || "unit"})
+                    Client Rate ({currency} / {selectedScope?.uom || "unit"})
                   </label>
                   <input
                     type="number"
@@ -404,7 +411,7 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
                   />
                   {form.subRate && form.clientRate && (
                     <p className="text-[10px] text-emerald-500 font-bold mt-1">
-                      Margin: SAR {(Number(form.clientRate) - Number(form.subRate)).toLocaleString()} / {selectedScope?.uom}
+                      Margin: {currency} {(Number(form.clientRate) - Number(form.subRate)).toLocaleString()} / {selectedScope?.uom}
                     </p>
                   )}
                 </div>
@@ -438,8 +445,8 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
               {totalQtyCalc > 0 && form.subRate && (
                 <div className="p-3 bg-primary/5 border border-primary/20 rounded-xl">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground mb-1">Subcontract Value Preview</p>
-                  <p className="text-lg font-black text-primary">SAR {totalContractVal.toLocaleString()}</p>
-                  <p className="text-[10px] text-muted-foreground">{totalQtyCalc.toLocaleString()} {selectedScope?.uom} × SAR {Number(form.subRate).toLocaleString()}</p>
+                  <p className="text-lg font-black text-primary">{currency} {totalContractVal.toLocaleString()}</p>
+                  <p className="text-[10px] text-muted-foreground">{totalQtyCalc.toLocaleString()} {selectedScope?.uom} × {currency} {Number(form.subRate).toLocaleString()}</p>
                 </div>
               )}
             </div>
@@ -455,8 +462,8 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
                   { label: "Contractor", value: contractor.name },
                   { label: "Assignment Level", value: form.level.charAt(0).toUpperCase() + form.level.slice(1) },
                   { label: "Total Qty", value: `${totalQtyCalc.toLocaleString()} ${selectedScope?.uom}` },
-                  { label: "Sub Rate", value: `SAR ${Number(form.subRate).toLocaleString()} / ${selectedScope?.uom}` },
-                  { label: "Client Rate", value: form.clientRate ? `SAR ${Number(form.clientRate).toLocaleString()} / ${selectedScope?.uom}` : "—" },
+                  { label: "Sub Rate", value: `${currency} ${Number(form.subRate).toLocaleString()} / ${selectedScope?.uom}` },
+                  { label: "Client Rate", value: form.clientRate ? `${currency} ${Number(form.clientRate).toLocaleString()} / ${selectedScope?.uom}` : "—" },
                   { label: "Target Date", value: form.targetDate || "—" },
                 ].map((row, i) => (
                   <div key={i} className="bg-muted/40 rounded-xl p-3 border border-border/50">
@@ -467,7 +474,7 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
               </div>
               <div className="p-4 bg-emerald-500/10 border border-emerald-500/20 rounded-xl">
                 <p className="text-[10px] uppercase font-bold text-muted-foreground">Total Subcontract Value</p>
-                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">SAR {totalContractVal.toLocaleString()}</p>
+                <p className="text-xl font-black text-emerald-600 dark:text-emerald-400">{currency} {totalContractVal.toLocaleString()}</p>
               </div>
               {form.notes && (
                 <div className="p-3 bg-muted/30 rounded-xl border border-border/50">

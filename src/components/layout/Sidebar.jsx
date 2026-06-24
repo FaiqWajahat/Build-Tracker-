@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -8,59 +8,75 @@ import {
   TrendingUp, Package, FileText, CreditCard, Minus,
   Settings, UserCog, ChevronLeft, ChevronRight, LogOut, BookOpen,
 } from "lucide-react";
-
-const navGroups = [
-  {
-    label: "OVERVIEW",
-    items: [
-      { icon: LayoutDashboard, label: "Dashboard",     href: "/" },
-    ],
-  },
-  {
-    label: "PROJECTS",
-    items: [
-      { icon: FolderOpen, label: "All Projects",   href: "/projects" },
-      { icon: BookOpen,   label: "Scope Library",  href: "/scopes" },
-    ],
-  },
-  {
-    label: "WORKFORCE",
-    items: [
-      { icon: Users,          label: "Labour",       href: "/labour-teams" },
-      { icon: HardHat,        label: "Contractors",  href: "/contractors" },
-      { icon: ClipboardCheck, label: "Attendance",   href: "/attendance",
-        badge: "Today", badgeType: "today" },
-    ],
-  },
-  {
-    label: "OPERATIONS",
-    items: [
-      { icon: TrendingUp, label: "Daily Progress", href: "/daily-progress" },
-      { icon: Package,    label: "Assets",          href: "/assets",
-        badge: "2", badgeType: "count" },
-    ],
-  },
-  {
-    label: "FINANCE",
-    items: [
-      { icon: FileText,   label: "Invoices",     href: "/invoices",
-        badge: "3", badgeType: "count" },
-      { icon: CreditCard, label: "Sub Payments", href: "/sub-payments" },
-      { icon: Minus,      label: "Deductions",   href: "/deductions" },
-    ],
-  },
-  {
-    label: "SYSTEM",
-    items: [
-      { icon: Settings, label: "Settings",      href: "/settings" },
-      { icon: UserCog,  label: "Users & Roles", href: "/users" },
-    ],
-  },
-];
+import useUserStore from "@/store/useUserStore";
+import useDashboardStore from "@/store/useDashboardStore";
+import { useCompanyName } from "@/store/useSettingsStore";
 
 export default function Sidebar() {
   const pathname  = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const companyName = useCompanyName();
+
+  const { currentUser, logout } = useUserStore();
+  const {
+    attendanceMarkedToday,
+    fetchDashboardData
+  } = useDashboardStore();
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const initials = currentUser?.name
+    ? currentUser.name.split(" ").map(n => n[0]).join("").toUpperCase()
+    : "U";
+
+  const navGroups = [
+    {
+      label: "OVERVIEW",
+      items: [
+        { icon: LayoutDashboard, label: "Dashboard",     href: "/" },
+      ],
+    },
+    {
+      label: "PROJECTS",
+      items: [
+        { icon: FolderOpen, label: "All Projects",   href: "/projects" },
+        { icon: BookOpen,   label: "Scope Library",  href: "/scopes" },
+      ],
+    },
+    {
+      label: "WORKFORCE",
+      items: [
+        { icon: Users,          label: "Labour",       href: "/labour-teams" },
+        { icon: HardHat,        label: "Contractors",  href: "/contractors" },
+        { icon: ClipboardCheck, label: "Attendance",   href: "/attendance",
+          badge: attendanceMarkedToday ? "Marked" : "Pending", badgeType: attendanceMarkedToday ? "today" : "pending" },
+      ],
+    },
+    {
+      label: "OPERATIONS",
+      items: [
+        { icon: TrendingUp, label: "Daily Progress", href: "/daily-progress" },
+        { icon: Package,    label: "Assets",          href: "/assets" },
+      ],
+    },
+    {
+      label: "FINANCE",
+      items: [
+        { icon: FileText,   label: "Invoices",     href: "/invoices" },
+        { icon: CreditCard, label: "Sub Payments", href: "/sub-payments" },
+        { icon: Minus,      label: "Deductions",   href: "/deductions" },
+      ],
+    },
+    {
+      label: "SYSTEM",
+      items: [
+        { icon: Settings, label: "Settings",      href: "/settings" },
+        { icon: UserCog,  label: "Users & Roles", href: "/users" },
+      ],
+    },
+  ];
 
   return (
     <aside
@@ -79,7 +95,7 @@ export default function Sidebar() {
           <div className="flex items-center px-[18px]">
             <img
               src="/logo.png"
-              alt="Seven Directions"
+              alt={companyName}
               className="h-9 w-full max-w-[160px] object-contain block"
             />
           </div>
@@ -145,21 +161,27 @@ export default function Sidebar() {
       {/* User Profile */}
       <div className="border-t border-sidebar-border p-2 bg-sidebar">
         {!collapsed ? (
-          <button className="w-full flex items-center gap-2.5 p-2 rounded-lg cursor-pointer bg-transparent border-none text-left transition-colors hover:bg-sidebar-accent group">
-            <Avatar initials="AM" />
+          <div className="w-full flex items-center gap-2.5 p-2 rounded-lg transition-colors hover:bg-sidebar-accent group">
+            <Avatar initials={initials} />
             <div className="flex-1 min-w-0">
               <p className="text-sidebar-accent-foreground text-[12.5px] font-semibold truncate">
-                Ahmed Malik
+                {currentUser?.name || "User"}
               </p>
               <p className="text-sidebar-foreground/55 text-[10.5px] truncate">
-                Project Manager
+                {currentUser?.role || "Role"}
               </p>
             </div>
-            <LogOut size={13} className="text-sidebar-foreground/45 group-hover:text-sidebar-accent-foreground shrink-0 transition-colors" />
-          </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); logout(); }}
+              title="Log Out Session"
+              className="p-1 hover:bg-sidebar-accent rounded-lg text-sidebar-foreground/45 hover:text-destructive shrink-0 transition-colors border-none bg-transparent cursor-pointer outline-none flex items-center justify-center"
+            >
+              <LogOut size={13} />
+            </button>
+          </div>
         ) : (
           <div className="flex justify-center py-1">
-            <Avatar initials="AM" />
+            <Avatar initials={initials} />
           </div>
         )}
       </div>

@@ -14,7 +14,15 @@ export function useTheme() {
 export function ThemeProvider({ children }) {
   const [theme, setTheme] = useState("light");
 
-  // Apply class to <html> on mount + change
+  // Read theme from localStorage on mount
+  useEffect(() => {
+    const storedTheme = localStorage.getItem("theme");
+    if (storedTheme) {
+      setTheme(storedTheme);
+    }
+  }, []);
+
+  // Apply class to <html> on change + save to localStorage
   useEffect(() => {
     const root = document.documentElement;
     if (theme === "dark") {
@@ -22,6 +30,7 @@ export function ThemeProvider({ children }) {
     } else {
       root.classList.remove("dark");
     }
+    localStorage.setItem("theme", theme);
   }, [theme]);
 
   const toggle = () => setTheme((t) => (t === "light" ? "dark" : "light"));

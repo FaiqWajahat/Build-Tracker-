@@ -7,9 +7,14 @@ import {
   Bell, Search, HelpCircle, X,
   AlertTriangle, CheckCircle, Info,
   Sun, Moon, ChevronRight,
+  LogOut, User, Shield, ChevronDown,
+  FolderKanban, Users, Layers, Wrench, Loader2
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import useProjectStore from "@/store/useProjectStore";
+import useUserStore from "@/store/useUserStore";
+import axios from "axios";
+import HelpDrawer from "./HelpDrawer";
 
 const notifications = [
   { id: 1, title: "Invoice #INV-0034 overdue",      desc: "Al-Rashid Co. · SAR 14,200 · 5 days past due",   time: "2h ago", type: "warning", read: false },
@@ -103,16 +108,71 @@ export default function TopBar() {
 
   const [notifOpen,     setNotifOpen]     = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchQuery,   setSearchQuery]   = useState("");
+  const [searchResults, setSearchResults] = useState({ workers: [], contractors: [], teams: [] });
+  const [loadingSearch, setLoadingSearch] = useState(false);
+  const [helpOpen,      setHelpOpen]      = useState(false);
   const [notifs,        setNotifs]        = useState(notifications);
+  const [userMenuOpen,  setUserMenuOpen]  = useState(false);
+  const [dateParts,     setDateParts]     = useState({ monthShort: "", dayNum: "", weekday: "", yearNum: "" });
   const ref = useRef(null);
+  const userMenuRef = useRef(null);
+  const searchRef = useRef(null);
 
   const unread = notifs.filter((n) => !n.read).length;
 
+  const { currentUser, users, fetchUsers, logout, login } = useUserStore();
+
   useEffect(() => {
-    const fn = (e) => { if (ref.current && !ref.current.contains(e.target)) setNotifOpen(false); };
+    fetchUsers();
+  }, [fetchUsers]);
+
+  useEffect(() => {
+    const updateDate = () => {
+      const now = new Date();
+      setDateParts({
+        monthShort: now.toLocaleDateString("en-US", { month: "short" }),
+        dayNum: now.getDate().toString(),
+        weekday: now.toLocaleDateString("en-US", { weekday: "long" }),
+        yearNum: now.getFullYear().toString()
+      });
+    };
+    updateDate();
+    const interval = setInterval(updateDate, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    const fn = (e) => { 
+      if (ref.current && !ref.current.contains(e.target)) setNotifOpen(false); 
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) setUserMenuOpen(false);
+      if (searchRef.current && !searchRef.current.contains(e.target)) setSearchFocused(false);
+    };
     document.addEventListener("mousedown", fn);
     return () => document.removeEventListener("mousedown", fn);
   }, []);
+
+  // Debounced Search Effect
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setSearchResults({ workers: [], contractors: [], teams: [] });
+      return;
+    }
+
+    const delayDebounce = setTimeout(async () => {
+      setLoadingSearch(true);
+      try {
+        const res = await axios.get(`/api/search?q=${encodeURIComponent(searchQuery)}`);
+        setSearchResults(res.data);
+      } catch (err) {
+        console.error("Global search error:", err);
+      } finally {
+        setLoadingSearch(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounce);
+  }, [searchQuery]);
 
   const markAllRead = () => setNotifs((n) => n.map((x) => ({ ...x, read: true })));
   const dismiss     = (id) => setNotifs((n) => n.filter((x) => x.id !== id));
@@ -176,22 +236,169 @@ export default function TopBar() {
       </div>
 
       {/* Right controls */}
-      <div className="flex items-center gap-1.5">
+      <div className="flex items-center gap-2">
+        {/* Date Widget */}
+        {dateParts.dayNum && (
+          <div className="hidden md:flex items-center gap-2.5 px-3 py-1 rounded-xl border border-border bg-card shadow-2xs hover:shadow-xs transition-all shrink-0">
+            <div className="flex flex-col items-center justify-center w-8 h-8 rounded-lg overflow-hidden border border-border bg-muted/40 shrink-0 select-none">
+              <div className="w-full bg-primary text-primary-foreground text-[7.5px] font-black py-0.5 text-center leading-none uppercase">
+                {dateParts.monthShort}
+              </div>
+              <div className="flex-1 flex items-center justify-center text-foreground font-black text-[12px] leading-none bg-card/30 w-full">
+                {dateParts.dayNum}
+              </div>
+            </div>
+            <div className="flex flex-col leading-none text-left select-none">
+              <span className="text-[11.5px] font-extrabold text-foreground">{dateParts.weekday}</span>
+              <span className="text-[9.5px] font-bold text-muted-foreground mt-0.5">{dateParts.yearNum}</span>
+            </div>
+          </div>
+        )}
+
         {/* Search */}
-        <div className="relative">
+        <div ref={searchRef} className="relative">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="Search projects, workers…"
             onFocus={() => setSearchFocused(true)}
-            onBlur={() => setSearchFocused(false)}
             className={`pl-9 pr-3 py-1.5 text-[12.5px] bg-muted text-foreground rounded-lg outline-none w-[210px] transition-all border
               ${searchFocused ? 'border-ring ring-3 ring-ring/15' : 'border-border'}`}
           />
+
+          {searchFocused && searchQuery.trim() && (
+            <div className="absolute left-0 top-full mt-2 w-[340px] bg-card rounded-xl shadow-lg border border-border overflow-hidden z-100 p-2 text-xs flex flex-col gap-3">
+              {loadingSearch ? (
+                <div className="flex items-center justify-center py-6 text-muted-foreground gap-2">
+                  <Loader2 size={14} className="animate-spin text-primary" />
+                  <span>Searching...</span>
+                </div>
+              ) : (
+                <div className="max-h-[360px] overflow-y-auto space-y-3 pr-0.5">
+                  {/* Projects */}
+                  {projects.filter(p =>
+                    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.client.toLowerCase().includes(searchQuery.toLowerCase())
+                  ).length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 py-1 flex items-center gap-1.5 border-b border-border/50 pb-1">
+                        <FolderKanban size={11} className="text-primary" /> Projects
+                      </div>
+                      <div className="flex flex-col mt-1 gap-0.5">
+                        {projects.filter(p =>
+                          p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          p.client.toLowerCase().includes(searchQuery.toLowerCase())
+                        ).slice(0, 5).map(p => (
+                          <Link
+                            key={p.id}
+                            href={`/projects/${p.id}`}
+                            onClick={() => setSearchFocused(false)}
+                            className="flex flex-col px-2 py-1.5 hover:bg-muted rounded-lg transition-colors text-foreground decoration-none"
+                          >
+                            <span className="font-semibold text-[12px]">{p.name}</span>
+                            <span className="text-[10px] text-muted-foreground mt-0.5">{p.client} · {p.id}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Workers */}
+                  {searchResults.workers?.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 py-1 flex items-center gap-1.5 border-b border-border/50 pb-1">
+                        <Users size={11} className="text-emerald-500" /> Workers
+                      </div>
+                      <div className="flex flex-col mt-1 gap-0.5">
+                        {searchResults.workers.map(w => (
+                          <Link
+                            key={w.id}
+                            href={`/labour-teams?workerId=${w.id}`}
+                            onClick={() => setSearchFocused(false)}
+                            className="flex flex-col px-2 py-1.5 hover:bg-muted rounded-lg transition-colors text-foreground decoration-none"
+                          >
+                            <span className="font-semibold text-[12px]">{w.name}</span>
+                            <span className="text-[10px] text-muted-foreground mt-0.5">{w.trade} · {w.id}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Contractors */}
+                  {searchResults.contractors?.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 py-1 flex items-center gap-1.5 border-b border-border/50 pb-1">
+                        <Wrench size={11} className="text-amber-500" /> Contractors
+                      </div>
+                      <div className="flex flex-col mt-1 gap-0.5">
+                        {searchResults.contractors.map(c => (
+                          <Link
+                            key={c.id}
+                            href={`/contractors?contractorId=${c.id}`}
+                            onClick={() => setSearchFocused(false)}
+                            className="flex flex-col px-2 py-1.5 hover:bg-muted rounded-lg transition-colors text-foreground decoration-none"
+                          >
+                            <span className="font-semibold text-[12px]">{c.name}</span>
+                            <span className="text-[10px] text-muted-foreground mt-0.5">{c.trade} · {c.id}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Teams */}
+                  {searchResults.teams?.length > 0 && (
+                    <div>
+                      <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider px-2 py-1 flex items-center gap-1.5 border-b border-border/50 pb-1">
+                        <Layers size={11} className="text-blue-500" /> Teams
+                      </div>
+                      <div className="flex flex-col mt-1 gap-0.5">
+                        {searchResults.teams.map(t => (
+                          <Link
+                            key={t.id}
+                            href={`/labour-teams?teamId=${t.id}`}
+                            onClick={() => setSearchFocused(false)}
+                            className="flex flex-col px-2 py-1.5 hover:bg-muted rounded-lg transition-colors text-foreground decoration-none"
+                          >
+                            <span className="font-semibold text-[12px]">{t.name}</span>
+                            <span className="text-[10px] text-muted-foreground mt-0.5">{t.trade} · {t.id}</span>
+                          </Link>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {projects.filter(p =>
+                    p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    p.client.toLowerCase().includes(searchQuery.toLowerCase())
+                  ).length === 0 &&
+                   (!searchResults.workers || searchResults.workers.length === 0) &&
+                   (!searchResults.contractors || searchResults.contractors.length === 0) &&
+                   (!searchResults.teams || searchResults.teams.length === 0) && (
+                    <div className="text-center py-6 text-muted-foreground text-[11.5px]">
+                      No matches found for "{searchQuery}"
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Help */}
-        <TopBtn title="Help"><HelpCircle size={15} /></TopBtn>
+        <button
+          title="Open Help Center"
+          onClick={() => setHelpOpen(true)}
+          className="w-9 h-9 rounded-lg border-none bg-transparent flex items-center justify-center cursor-pointer text-muted-foreground hover:bg-muted transition-colors outline-none"
+        >
+          <HelpCircle size={15} />
+        </button>
 
         {/* Theme Toggle */}
         <button
@@ -278,7 +485,93 @@ export default function TopBar() {
           )}
         </div>
 
+        {/* User Profile / Testing Switcher */}
+        <div ref={userMenuRef} className="relative ml-1">
+          <button
+            onClick={() => setUserMenuOpen((o) => !o)}
+            className="flex items-center gap-2 pl-2 pr-2.5 py-1 rounded-xl border border-border bg-muted/40 hover:bg-muted/80 transition-all cursor-pointer outline-none select-none"
+          >
+            <div className="w-6.5 h-6.5 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-xs font-bold shrink-0">
+              {currentUser ? currentUser.name.split(" ").map(w => w[0]).join("") : "U"}
+            </div>
+            <div className="flex flex-col items-start leading-none hidden md:flex">
+              <span className="text-[11.5px] font-bold text-foreground truncate max-w-[100px]">{currentUser?.name || "User"}</span>
+              <span className="text-[9.5px] font-bold text-muted-foreground mt-0.5">{currentUser?.role || "Role"}</span>
+            </div>
+            <ChevronDown size={11} className={`text-muted-foreground transition-transform duration-200 ${userMenuOpen ? 'rotate-180' : ''}`} />
+          </button>
+
+          {userMenuOpen && (
+            <div className="absolute right-0 top-full mt-2 w-[240px] bg-card rounded-2xl shadow-xl border border-border overflow-hidden z-100 p-3 flex flex-col gap-2.5">
+              {/* Active Profile */}
+              <div className="flex flex-col p-2 bg-muted/30 rounded-xl border border-border/40">
+                <span className="text-[9px] font-bold text-slate-500 uppercase tracking-wider">Active Session</span>
+                <span className="text-xs font-bold text-foreground mt-1">{currentUser?.name}</span>
+                <span className="text-[10px] text-muted-foreground mt-0.5">{currentUser?.email}</span>
+                <div className="mt-2.5 flex items-center justify-between">
+                  <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-extrabold tracking-wide uppercase border
+                    ${currentUser?.role === 'Admin' 
+                      ? 'bg-primary/10 text-primary border-primary/20' 
+                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'}`}>
+                    {currentUser?.role}
+                  </span>
+                  <span className="text-[9.5px] font-bold text-muted-foreground/80">({currentUser?.role === 'Admin' ? 'Full Access' : 'Read Only'})</span>
+                </div>
+              </div>
+
+              {/* Quick Switch for Testing */}
+              {currentUser?.role === "Admin" && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider px-1">Switch Persona (Testing)</span>
+                  <div className="max-h-[140px] overflow-y-auto flex flex-col gap-1 pr-0.5">
+                    {users.map((u) => {
+                      const isActive = u.id === currentUser?.id;
+                      return (
+                        <button
+                          key={u.id}
+                          onClick={async () => {
+                            if (isActive) return;
+                            try {
+                              await login(u.email, "password123");
+                              setUserMenuOpen(false);
+                            } catch (err) {
+                              // Already handled by login
+                            }
+                          }}
+                          disabled={isActive}
+                          className={`w-full py-1.5 px-2.5 rounded-lg text-left text-xs transition-colors flex items-center justify-between cursor-pointer border-none
+                            ${isActive 
+                              ? 'bg-primary/15 text-primary font-bold cursor-default' 
+                              : 'bg-transparent text-muted-foreground hover:text-foreground hover:bg-muted'}`}
+                        >
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-semibold truncate">{u.name}</span>
+                            <span className="text-[9.5px] opacity-75 truncate">{u.role}</span>
+                          </div>
+                          {isActive && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <button
+                onClick={() => {
+                  logout();
+                  setUserMenuOpen(false);
+                }}
+                className="w-full mt-1.5 py-2 bg-destructive/10 hover:bg-destructive/15 text-destructive text-xs font-bold rounded-xl border border-destructive/25 hover:border-destructive/35 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+              >
+                <LogOut size={12} /> Log Out Session
+              </button>
+            </div>
+          )}
+        </div>
+
       </div>
+      <HelpDrawer isOpen={helpOpen} onClose={() => setHelpOpen(false)} pathname={pathname} />
     </header>
   );
 }

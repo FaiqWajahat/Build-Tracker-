@@ -14,6 +14,8 @@ import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
 import useAssignmentStore from "@/store/useAssignmentStore";
 import useProgressStore from "@/store/useProgressStore";
 import { PROJECT_TYPES } from "@/components/projects/ProjectTypeConfig";
+import useUserStore from "@/store/useUserStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 import OverviewTab       from "@/components/project-detail/OverviewTab";
 import AssignmentsTab    from "@/components/project-detail/AssignmentsTab";
@@ -38,6 +40,9 @@ function typeIcon(typeVal) {
 
 export default function ProjectDetailPage() {
   const { id } = useParams();
+  const currency = useCurrency();
+  const currentUser = useUserStore((s) => s.currentUser);
+  const isReadOnly = currentUser?.role === "User";
   const project        = useProjectStore((s) => s.projects.find((p) => p.id === id));
   const allAssignments = useAssignmentStore((s) => s.assignments);
   const allLogs        = useProgressStore((s) => s.logs);
@@ -116,12 +121,14 @@ export default function ProjectDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           <span className="text-[11px] text-muted-foreground font-mono bg-muted px-2 py-0.5 rounded">{project.id}</span>
-          <button
-            onClick={() => setShowLogModal(true)}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all cursor-pointer shadow-sm"
-          >
-            <PlusCircle size={13} /> Log Progress
-          </button>
+          {!isReadOnly && (
+            <button
+              onClick={() => setShowLogModal(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-xl hover:bg-primary/90 transition-all cursor-pointer shadow-sm"
+            >
+              <PlusCircle size={13} /> Log Progress
+            </button>
+          )}
         </div>
       </div>
 
@@ -190,9 +197,9 @@ export default function ProjectDetailPage() {
                 <div className={`h-full rounded-full transition-all duration-700 ${sc.bar}`} style={{ width: `${overallProgress}%` }} />
               </div>
               <div className="flex items-center gap-4 mt-2 text-[10.5px] text-muted-foreground font-semibold">
-                <span>Contract: SAR {(totalContractVal / 1000).toFixed(0)}K</span>
+                <span>Contract: {currency} {(totalContractVal / 1000).toFixed(0)}K</span>
                 <span>·</span>
-                <span className="text-emerald-600 dark:text-emerald-400">Earned: SAR {(totalEarned / 1000).toFixed(0)}K</span>
+                <span className="text-emerald-600 dark:text-emerald-400">Earned: {currency} {(totalEarned / 1000).toFixed(0)}K</span>
                 <span>·</span>
                 <span>{logs.length} logs</span>
               </div>
