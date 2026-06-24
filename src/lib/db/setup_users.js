@@ -25,7 +25,7 @@ const defaultUsers = [
   { name: "Hassan Usman", email: "hassan.u@7d.sa", role: "User", active_site: "Tower Block A", status: "Active" },
   { name: "Omar Tareq", email: "omar.t@7d.sa", role: "User", active_site: "Warehouse D", status: "Active" },
   { name: "Faisal Ghamdi", email: "faisal.g@7d.sa", role: "User", active_site: "All Sites", status: "Active" },
-  { name: "Khalid Al-Ahmadi", email: "khalid@7d.sa", role: "Admin", active_site: "All Portfolios", status: "Active" },
+  { name: "Faiq Wajahat", email: "faiqwajahatofficial@gmail.com", role: "Admin", active_site: "All Portfolios", status: "Active" },
   { name: "Yasir Arafat", email: "yasir.a@7d.sa", role: "User", active_site: "Standby", status: "Suspended" },
 ];
 
@@ -42,7 +42,7 @@ async function run() {
     `);
 
     console.log("Seeding default users with hashed passwords...");
-    const hashedPassword = bcrypt.hashSync("password123", 10);
+    const hashedPassword = bcrypt.hashSync("faiq@7007", 10);
 
     for (const u of defaultUsers) {
       await pool.query(`

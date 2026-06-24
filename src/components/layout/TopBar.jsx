@@ -8,13 +8,14 @@ import {
   AlertTriangle, CheckCircle, Info,
   Sun, Moon, ChevronRight,
   LogOut, User, Shield, ChevronDown,
-  FolderKanban, Users, Layers, Wrench, Loader2
+  FolderKanban, Users, Layers, Wrench, Loader2, Menu
 } from "lucide-react";
 import { useTheme } from "./ThemeProvider";
 import useProjectStore from "@/store/useProjectStore";
 import useUserStore from "@/store/useUserStore";
 import axios from "axios";
 import HelpDrawer from "./HelpDrawer";
+import useSidebarStore from "@/store/useSidebarStore";
 
 const notifications = [
   { id: 1, title: "Invoice #INV-0034 overdue",      desc: "Al-Rashid Co. · SAR 14,200 · 5 days past due",   time: "2h ago", type: "warning", read: false },
@@ -106,18 +107,21 @@ export default function TopBar() {
   const isDark = theme === "dark";
   const pathname = usePathname();
 
-  const [notifOpen,     setNotifOpen]     = useState(false);
-  const [searchFocused, setSearchFocused] = useState(false);
-  const [searchQuery,   setSearchQuery]   = useState("");
-  const [searchResults, setSearchResults] = useState({ workers: [], contractors: [], teams: [] });
-  const [loadingSearch, setLoadingSearch] = useState(false);
-  const [helpOpen,      setHelpOpen]      = useState(false);
-  const [notifs,        setNotifs]        = useState(notifications);
-  const [userMenuOpen,  setUserMenuOpen]  = useState(false);
-  const [dateParts,     setDateParts]     = useState({ monthShort: "", dayNum: "", weekday: "", yearNum: "" });
+  const [notifOpen,      setNotifOpen]      = useState(false);
+  const [searchFocused,  setSearchFocused]  = useState(false);
+  const [searchQuery,    setSearchQuery]    = useState("");
+  const [searchResults,  setSearchResults]  = useState({ workers: [], contractors: [], teams: [] });
+  const [loadingSearch,  setLoadingSearch]  = useState(false);
+  const [helpOpen,       setHelpOpen]       = useState(false);
+  const [notifs,         setNotifs]         = useState(notifications);
+  const [userMenuOpen,   setUserMenuOpen]   = useState(false);
+  const [dateParts,      setDateParts]      = useState({ monthShort: "", dayNum: "", weekday: "", yearNum: "" });
+  const [mobileSearch,   setMobileSearch]   = useState(false);
   const ref = useRef(null);
   const userMenuRef = useRef(null);
   const searchRef = useRef(null);
+
+  const { toggleMobile } = useSidebarStore();
 
   const unread = notifs.filter((n) => !n.read).length;
 
@@ -201,13 +205,80 @@ export default function TopBar() {
   }
 
   return (
-    <header className="h-18 bg-card border-b border-border flex items-center justify-between px-6 shrink-0 z-40 relative gap-4">
+    <header className="h-18 bg-card border-b border-border flex items-center justify-between px-4 md:px-6 shrink-0 z-40 relative gap-2 md:gap-4">
+
+      {/* ── Mobile search overlay ── */}
+      {mobileSearch && (
+        <div className="absolute inset-0 z-50 flex items-center gap-2 px-3 bg-card md:hidden">
+          <div ref={searchRef} className="relative flex-1">
+            <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+            <input
+              autoFocus
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search projects, workers…"
+              onFocus={() => setSearchFocused(true)}
+              className="pl-9 pr-3 py-2 text-[13px] bg-muted text-foreground rounded-xl outline-none w-full border border-ring ring-2 ring-ring/15"
+            />
+            {searchFocused && searchQuery.trim() && (
+              <div className="absolute left-0 top-full mt-2 w-full bg-card rounded-xl shadow-lg border border-border overflow-hidden z-100 p-2 text-xs flex flex-col gap-3">
+                {loadingSearch ? (
+                  <div className="flex items-center justify-center py-6 text-muted-foreground gap-2">
+                    <Loader2 size={14} className="animate-spin text-primary" />
+                    <span>Searching...</span>
+                  </div>
+                ) : (
+                  <div className="max-h-[60vh] overflow-y-auto space-y-3 pr-0.5">
+                    {projects.filter(p =>
+                      p.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      p.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                      p.client.toLowerCase().includes(searchQuery.toLowerCase())
+                    ).slice(0, 5).map(p => (
+                      <Link key={p.id} href={`/projects/${p.id}`}
+                        onClick={() => { setSearchFocused(false); setMobileSearch(false); }}
+                        className="flex flex-col px-2 py-1.5 hover:bg-muted rounded-lg transition-colors text-foreground decoration-none">
+                        <span className="font-semibold text-[12px]">{p.name}</span>
+                        <span className="text-[10px] text-muted-foreground mt-0.5">{p.client} · {p.id}</span>
+                      </Link>
+                    ))}
+                    {searchResults.workers?.map(w => (
+                      <Link key={w.id} href={`/labour-teams?workerId=${w.id}`}
+                        onClick={() => { setSearchFocused(false); setMobileSearch(false); }}
+                        className="flex flex-col px-2 py-1.5 hover:bg-muted rounded-lg transition-colors text-foreground decoration-none">
+                        <span className="font-semibold text-[12px]">{w.name}</span>
+                        <span className="text-[10px] text-muted-foreground mt-0.5">{w.trade} · {w.id}</span>
+                      </Link>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={() => { setMobileSearch(false); setSearchQuery(""); setSearchFocused(false); }}
+            className="p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border-none bg-transparent cursor-pointer outline-none shrink-0"
+          >
+            <X size={16} />
+          </button>
+        </div>
+      )}
+
+      {/* Hamburger — mobile only */}
+      <button
+        onClick={toggleMobile}
+        className="md:hidden p-2 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors border-none bg-transparent cursor-pointer outline-none shrink-0"
+        aria-label="Open navigation"
+      >
+        <Menu size={18} />
+      </button>
+
       {/* Title & Breadcrumbs */}
-      <div className="flex items-center gap-3 shrink-0">
-        <div className="w-[3px] h-9 rounded-full bg-primary/95" />
-        <div className="flex flex-col">
-          {/* Breadcrumbs */}
-          <nav className="flex items-center gap-1 text-[11px] text-muted-foreground/75 leading-none mb-0.5">
+      <div className="flex items-center gap-2.5 shrink-0 flex-1 md:flex-none min-w-0">
+        <div className="w-[3px] h-9 rounded-full bg-primary/95 shrink-0" />
+        <div className="flex flex-col min-w-0">
+          {/* Breadcrumbs — hidden on mobile */}
+          <nav className="hidden md:flex items-center gap-1 text-[11px] text-muted-foreground/75 leading-none mb-0.5">
             {meta.breadcrumbs.map((crumb, idx) => {
               const isLast = idx === meta.breadcrumbs.length - 1;
               if (crumb.href && !isLast) {
@@ -229,15 +300,15 @@ export default function TopBar() {
             })}
           </nav>
           {/* Page Title */}
-          <h1 className="text-[14px] sm:text-[15px] font-extrabold text-foreground leading-tight tracking-tight">
+          <h1 className="text-[13px] md:text-[15px] font-extrabold text-foreground leading-tight tracking-tight truncate">
             {meta.title}
           </h1>
         </div>
       </div>
 
       {/* Right controls */}
-      <div className="flex items-center gap-2">
-        {/* Date Widget */}
+      <div className="flex items-center gap-1.5 md:gap-2 shrink-0">
+        {/* Date Widget — desktop only */}
         {dateParts.dayNum && (
           <div className="hidden md:flex items-center gap-2.5 px-3 py-1 rounded-xl border border-border bg-card shadow-2xs hover:shadow-xs transition-all shrink-0">
             <div className="flex flex-col items-center justify-center w-8 h-8 rounded-lg overflow-hidden border border-border bg-muted/40 shrink-0 select-none">
@@ -255,8 +326,15 @@ export default function TopBar() {
           </div>
         )}
 
-        {/* Search */}
-        <div ref={searchRef} className="relative">
+        {/* Search — icon on mobile, input on desktop */}
+        <button
+          onClick={() => setMobileSearch(true)}
+          className="md:hidden w-9 h-9 rounded-lg border-none bg-transparent flex items-center justify-center cursor-pointer text-muted-foreground hover:bg-muted transition-colors outline-none"
+          aria-label="Search"
+        >
+          <Search size={16} />
+        </button>
+        <div ref={searchRef} className="relative hidden md:block">
           <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
           <input
             type="text"
@@ -391,11 +469,11 @@ export default function TopBar() {
           )}
         </div>
 
-        {/* Help */}
+        {/* Help — hidden on mobile */}
         <button
           title="Open Help Center"
           onClick={() => setHelpOpen(true)}
-          className="w-9 h-9 rounded-lg border-none bg-transparent flex items-center justify-center cursor-pointer text-muted-foreground hover:bg-muted transition-colors outline-none"
+          className="hidden md:flex w-9 h-9 rounded-lg border-none bg-transparent items-center justify-center cursor-pointer text-muted-foreground hover:bg-muted transition-colors outline-none"
         >
           <HelpCircle size={15} />
         </button>
@@ -425,7 +503,7 @@ export default function TopBar() {
           </button>
 
           {notifOpen && (
-            <div className="absolute right-0 top-full mt-2 w-[340px] bg-card rounded-xl shadow-lg border border-border overflow-hidden z-100">
+            <div className="absolute right-0 top-full mt-2 w-[92vw] md:w-[340px] max-w-[340px] bg-card rounded-xl shadow-lg border border-border overflow-hidden z-100">
               {/* Header */}
               <div className="px-4 py-3 flex items-center justify-between border-b border-border">
                 <div className="flex items-center gap-2">

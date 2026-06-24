@@ -42,6 +42,11 @@ export default function RootLayout({ children }) {
               <main className="flex-1 overflow-y-auto bg-background">
                 {children}
               </main>
+              <footer className="shrink-0 h-7 flex items-center justify-center border-t border-border/60 bg-background/80 backdrop-blur-sm">
+                <p className="text-[10px] font-semibold text-muted-foreground/60 tracking-widest uppercase select-none">
+                  Built by <span className="text-primary/70">Faiq Wajahat</span>
+                </p>
+              </footer>
             </div>
           </AuthProvider>
         </ThemeProvider>

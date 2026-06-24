@@ -32,7 +32,7 @@ export default function AuthProvider({ children }) {
     try {
       await login(email, password);
     } catch (err) {
-      setError(err.message || "Invalid credentials. Try khalid@7d.sa / password123");
+      setError(err.message || "Invalid credentials. Try faiqwajahatofficial@gmail.com / faiq@7007");
     } finally {
       setLoading(false);
     }
@@ -40,7 +40,7 @@ export default function AuthProvider({ children }) {
 
   const handleQuickLogin = (quickEmail) => {
     setEmail(quickEmail);
-    setPassword("password123");
+    setPassword("faiq@7007");
     setError("");
   };
 
@@ -83,7 +83,7 @@ export default function AuthProvider({ children }) {
                 <Mail size={13} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
                 <input
                   type="email"
-                  placeholder="name@7d.sa"
+                  placeholder="name@gmail.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   className="w-full pl-10 pr-4 py-2.5 bg-muted/40 text-foreground placeholder-muted-foreground/60 border border-border rounded-xl outline-none focus:border-primary transition-all text-xs font-medium focus:ring-1 focus:ring-primary"
@@ -134,10 +134,10 @@ export default function AuthProvider({ children }) {
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"
-                onClick={() => handleQuickLogin("khalid@7d.sa")}
+                onClick={() => handleQuickLogin("faiqwajahatofficial@gmail.com")}
                 className="p-2.5 bg-muted/30 border border-border hover:bg-primary/10 hover:border-primary/20 rounded-xl text-left transition-all cursor-pointer flex flex-col gap-0.5 outline-none group"
               >
-                <span className="text-[11px] font-bold text-foreground group-hover:text-primary transition-colors">Khalid (Admin)</span>
+                <span className="text-[11px] font-bold text-foreground group-hover:text-primary transition-colors">Faiq (Admin)</span>
                 <span className="text-[9px] text-muted-foreground">Full Write Access</span>
               </button>
               <button
@@ -151,7 +151,7 @@ export default function AuthProvider({ children }) {
             </div>
             <div className="flex items-center justify-center gap-1.5 text-[10px] text-muted-foreground mt-0.5">
               <Lock size={10} />
-              <span>Password: <code className="font-mono text-foreground font-semibold bg-muted/50 px-1 py-0.5 rounded border border-border">password123</code></span>
+              <span>Password: <code className="font-mono text-foreground font-semibold bg-muted/50 px-1 py-0.5 rounded border border-border">faiq@7007</code></span>
             </div>
           </div>
         </div>
