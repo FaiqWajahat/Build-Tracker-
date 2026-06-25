@@ -188,10 +188,36 @@ export default function Step4Review({ basicInfo, structure, scopes }) {
                 <p className="text-[10.5px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">{trade}</p>
                 <div className="space-y-1.5">
                   {entries.map((entry) => (
-                    <div key={entry.scopeId} className="bg-muted rounded-lg px-3 py-2">
+                    <div key={entry.scopeId} className="bg-muted rounded-lg px-3 py-2.5 space-y-1">
                       <div className="flex items-center justify-between">
                         <span className="text-[12px] font-semibold text-foreground">{entry.scopeName}</span>
                         <span className="text-[10px] font-mono font-bold text-muted-foreground">{entry.uom}</span>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {entry.assigneeName ? (
+                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                            → {entry.assigneeName} ({entry.assigneeType === "team" ? "Labour Team" : "Contractor"})
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-semibold text-amber-600 bg-amber-500/10 px-1.5 py-0.5 rounded">
+                            ⚠ No assignee
+                          </span>
+                        )}
+                        {Number(entry.clientRate) > 0 && (
+                          <span className="text-[10px] font-semibold text-blue-600 bg-blue-500/10 px-1.5 py-0.5 rounded">
+                            Client: {entry.clientRate}/{entry.uom}
+                          </span>
+                        )}
+                        {Number(entry.subRate) > 0 && (
+                          <span className="text-[10px] font-semibold text-purple-600 bg-purple-500/10 px-1.5 py-0.5 rounded">
+                            Sub: {entry.subRate}/{entry.uom}
+                          </span>
+                        )}
+                        {Number(entry.totalQty) > 0 && (
+                          <span className="text-[10px] font-semibold text-muted-foreground bg-muted-foreground/10 px-1.5 py-0.5 rounded">
+                            Qty: {entry.totalQty} {entry.uom}
+                          </span>
+                        )}
                       </div>
                     </div>
                   ))}

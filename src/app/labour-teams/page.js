@@ -12,6 +12,8 @@ import {
 import useLabourStore from "@/store/useLabourStore";
 import useProjectStore from "@/store/useProjectStore";
 import useUserStore from "@/store/useUserStore";
+import useAssignmentStore from "@/store/useAssignmentStore";
+import useProgressStore from "@/store/useProgressStore";
 import Link from "next/link";
 import Loader from "@/components/ui/Loader";
 import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
@@ -503,9 +505,16 @@ export default function LabourPage() {
   const isReadOnly = currentUser?.role === "User";
   const currency = useSettingsStore((s) => s.settings.currency);
 
+  const fetchAssignments = useAssignmentStore((s) => s.fetchAssignments);
+  const fetchLogs = useProgressStore((s) => s.fetchLogs);
+  const allAssignments = useAssignmentStore((s) => s.assignments);
+  const allLogs = useProgressStore((s) => s.logs);
+
   useEffect(() => {
     fetchLabourData();
-  }, [fetchLabourData]);
+    fetchAssignments();
+    fetchLogs();
+  }, [fetchLabourData, fetchAssignments, fetchLogs]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && workers.length > 0) {
@@ -705,7 +714,15 @@ export default function LabourPage() {
             )}
           </>
         ) : (
-          <TeamsTab teams={teams} workers={workers} projects={projects} isReadOnly={isReadOnly} />
+          <TeamsTab
+            teams={teams}
+            workers={workers}
+            projects={projects}
+            isReadOnly={isReadOnly}
+            allAssignments={allAssignments}
+            allLogs={allLogs}
+            currency={currency}
+          />
         )}
       </div>
 
@@ -730,7 +747,7 @@ export default function LabourPage() {
 }
 
 /* ─── Teams Tab ─────────────────────────────────────────────────────────── */
-function TeamsTab({ teams, workers, projects, isReadOnly }) {
+function TeamsTab({ teams, workers, projects, isReadOnly, allAssignments, allLogs, currency }) {
   const { addTeam, updateTeam, deleteTeam } = useLabourStore();
   const [showModal, setShowModal] = useState(false);
   const [editTeam, setEditTeam] = useState(null);
@@ -765,6 +782,9 @@ function TeamsTab({ teams, workers, projects, isReadOnly }) {
               key={team.id}
               team={team}
               workers={workers}
+              assignments={allAssignments}
+              logs={allLogs}
+              currency={currency}
               onEdit={(t) => { setEditTeam(t); setShowModal(true); }}
               onDelete={(id) => setDeleteTeamTarget(teams.find((x) => x.id === id))}
               isReadOnly={isReadOnly}
@@ -801,7 +821,7 @@ function TeamsTab({ teams, workers, projects, isReadOnly }) {
 }
 
 /* ─── Team Card ─────────────────────────────────────────────────────────── */
-function TeamCard({ team, workers, onEdit, onDelete, isReadOnly }) {
+function TeamCard({ team, workers, assignments = [], logs = [], currency = "SAR", onEdit, onDelete, isReadOnly }) {
   const members = team.memberIds.map((id) => workers.find((w) => w.id === id)).filter(Boolean);
   const leader = workers.find((w) => w.id === team.leaderId);
 
@@ -811,68 +831,139 @@ function TeamCard({ team, workers, onEdit, onDelete, isReadOnly }) {
     ? "bg-blue-500/10 text-blue-600 dark:text-blue-400"
     : "bg-rose-500/10 text-rose-600 dark:text-rose-400";
 
+  // Filter assignments for this specific team (by id or name matching)
+  const teamAssignments = assignments.filter(
+    (a) => a.assigneeType === "team" && (a.assigneeId === team.id || a.assigneeName?.toLowerCase() === team.name?.toLowerCase())
+  );
+
+  let totalContractVal = 0;
+  let totalEarnedVal = 0;
+  teamAssignments.forEach((a) => {
+    const logsFiltered = logs.filter((l) => l.assignmentId === a.id);
+    const totalQty = a.level === "unit" ? (a.unitBreakdown || []).reduce((s, u) => s + (Number(u.qty) || 0), 0)
+      : a.level === "phase" ? (a.phaseBreakdown || []).reduce((s, p) => s + (Number(p.qty) || 0), 0)
+      : Number(a.totalQty) || 0;
+    const doneQty = a.level === "unit" ? (a.unitBreakdown || []).reduce((s, u) => s + (Number(u.done) || 0), 0)
+      : a.level === "phase" ? (a.phaseBreakdown || []).reduce((s, p) => s + (Number(p.done) || 0), 0)
+      : logsFiltered.reduce((s, l) => s + (Number(l.qtyCompleted) || 0), 0);
+    totalContractVal += totalQty * (Number(a.subRate) || 0);
+    totalEarnedVal += doneQty * (Number(a.subRate) || 0);
+  });
+  const progressPct = totalContractVal > 0 ? Math.round((totalEarnedVal / totalContractVal) * 100) : 0;
+
   return (
-    <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:border-primary/20 transition-all group">
-      <div className="flex items-start justify-between mb-4">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap mb-1">
-            <span className="font-bold text-foreground text-sm">{team.name}</span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor}`}>
-              {team.status}
-            </span>
+    <div className="bg-card border border-border rounded-2xl p-5 hover:shadow-md hover:border-primary/20 transition-all group flex flex-col justify-between min-h-[300px]">
+      <div>
+        <div className="flex items-start justify-between mb-4">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className="font-bold text-foreground text-sm">{team.name}</span>
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusColor}`}>
+                {team.status}
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Building2 size={11} />
+              <span>{team.projectName || "No project assigned"}</span>
+            </div>
           </div>
-          <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Building2 size={11} />
-            <span>{team.projectName || "No project assigned"}</span>
-          </div>
+          {!isReadOnly && (
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={() => onEdit(team)} className="p-1.5 rounded-lg hover:bg-muted">
+                <Edit2 size={12} className="text-muted-foreground" />
+              </button>
+              <button onClick={() => onDelete(team.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10">
+                <Trash2 size={12} className="text-rose-500" />
+              </button>
+            </div>
+          )}
         </div>
-        {!isReadOnly && (
-          <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-            <button onClick={() => onEdit(team)} className="p-1.5 rounded-lg hover:bg-muted">
-              <Edit2 size={12} className="text-muted-foreground" />
-            </button>
-            <button onClick={() => onDelete(team.id)} className="p-1.5 rounded-lg hover:bg-rose-500/10">
-              <Trash2 size={12} className="text-rose-500" />
-            </button>
+
+        {leader && (
+          <div className="flex items-center gap-2 mb-3 bg-primary/5 rounded-xl px-3 py-2">
+            <WorkerAvatar worker={leader} size={28} />
+            <div>
+              <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Team Leader</div>
+              <div className="text-xs font-semibold text-foreground">{leader.name}</div>
+            </div>
+            <Award size={14} className="ml-auto text-primary" />
           </div>
         )}
-      </div>
 
-      {leader && (
-        <div className="flex items-center gap-2 mb-3 bg-primary/5 rounded-xl px-3 py-2">
-          <WorkerAvatar worker={leader} size={28} />
-          <div>
-            <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">Team Leader</div>
-            <div className="text-xs font-semibold text-foreground">{leader.name}</div>
+        <div className="mb-4">
+          <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-2">
+            Members ({members.length})
           </div>
-          <Award size={14} className="ml-auto text-primary" />
-        </div>
-      )}
-
-      <div className="mb-3">
-        <div className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold mb-2">
-          Members ({members.length})
-        </div>
-        <div className="flex flex-wrap gap-1.5">
-          {members.slice(0, 8).map((w) => {
-            const idx = parseInt(w.id.replace("WRK-", ""), 10) % AVATAR_COLORS.length;
-            return (
-              <div key={w.id} title={w.name} className="flex items-center gap-1 bg-muted/60 rounded-full px-2 py-0.5">
-                <div
-                  className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0"
-                  style={{
-                    background: `linear-gradient(135deg, ${AVATAR_COLORS[idx][0]}, ${AVATAR_COLORS[idx][1]})`,
-                    fontSize: 7, fontWeight: 700,
-                  }}
-                >
-                  {initials(w.name)}
+          <div className="flex flex-wrap gap-1.5">
+            {members.slice(0, 8).map((w) => {
+              const idx = parseInt(w.id.replace("WRK-", ""), 10) % AVATAR_COLORS.length;
+              return (
+                <div key={w.id} title={w.name} className="flex items-center gap-1 bg-muted/60 rounded-full px-2 py-0.5">
+                  <div
+                    className="w-4 h-4 rounded-full flex items-center justify-center text-white shrink-0"
+                    style={{
+                      background: `linear-gradient(135deg, ${AVATAR_COLORS[idx][0]}, ${AVATAR_COLORS[idx][1]})`,
+                      fontSize: 7, fontWeight: 700,
+                    }}
+                  >
+                    {initials(w.name)}
+                  </div>
+                  <span className="text-[10px] text-foreground font-medium">{w.name.split(" ")[0]}</span>
                 </div>
-                <span className="text-[10px] text-foreground font-medium">{w.name.split(" ")[0]}</span>
+              );
+            })}
+            {members.length > 8 && (
+              <span className="text-[10px] text-muted-foreground self-center">+{members.length - 8} more</span>
+            )}
+          </div>
+        </div>
+
+        {/* Assigned Scopes Summary */}
+        <div className="mb-4 bg-muted/30 border border-border/40 rounded-xl p-3">
+          <div className="flex items-center justify-between mb-1.5">
+            <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold flex items-center gap-1.5">
+              <Layers size={11} className="text-primary" /> Assigned Scopes ({teamAssignments.length})
+            </span>
+            {teamAssignments.length > 0 && (
+              <span className="text-[11px] font-bold text-primary">{progressPct}%</span>
+            )}
+          </div>
+          {teamAssignments.length === 0 ? (
+            <p className="text-[10px] text-muted-foreground italic">No project scopes assigned yet</p>
+          ) : (
+            <div className="space-y-2">
+              <div className="h-1 bg-muted rounded-full overflow-hidden">
+                <div className="h-full bg-primary rounded-full transition-all duration-500" style={{ width: `${progressPct}%` }} />
               </div>
-            );
-          })}
-          {members.length > 8 && (
-            <span className="text-[10px] text-muted-foreground self-center">+{members.length - 8} more</span>
+              <div className="flex items-center justify-between text-[10.5px]">
+                <span className="text-muted-foreground">Labour Value:</span>
+                <span className="font-extrabold text-foreground">
+                  {currency} {totalEarnedVal.toLocaleString()} <span className="text-muted-foreground font-normal text-[9.5px]">of {currency} {totalContractVal.toLocaleString()}</span>
+                </span>
+              </div>
+              {/* List first 2 scopes */}
+              <div className="space-y-1 pt-1.5 border-t border-border/30">
+                {teamAssignments.slice(0, 2).map((a) => {
+                  const aLogs = logs.filter((l) => l.assignmentId === a.id);
+                  const totalQty = a.level === "unit" ? (a.unitBreakdown || []).reduce((s, u) => s + (Number(u.qty) || 0), 0)
+                    : a.level === "phase" ? (a.phaseBreakdown || []).reduce((s, p) => s + (Number(p.qty) || 0), 0)
+                    : Number(a.totalQty) || 0;
+                  const doneQty = a.level === "unit" ? (a.unitBreakdown || []).reduce((s, u) => s + (Number(u.done) || 0), 0)
+                    : a.level === "phase" ? (a.phaseBreakdown || []).reduce((s, p) => s + (Number(p.done) || 0), 0)
+                    : aLogs.reduce((s, l) => s + (Number(l.qtyCompleted) || 0), 0);
+                  const aPct = totalQty > 0 ? Math.round((doneQty / totalQty) * 100) : 0;
+                  return (
+                    <div key={a.id} className="flex justify-between items-center text-[10px]">
+                      <span className="text-foreground/80 truncate max-w-[155px] font-medium">{a.tradeIcon || "🏗️"} {a.scopeName}</span>
+                      <span className="text-muted-foreground font-mono">{aPct}% ({doneQty}/{totalQty} {a.uom})</span>
+                    </div>
+                  );
+                })}
+                {teamAssignments.length > 2 && (
+                  <p className="text-[9px] text-muted-foreground text-right font-semibold">+ {teamAssignments.length - 2} more assignments</p>
+                )}
+              </div>
+            </div>
           )}
         </div>
       </div>

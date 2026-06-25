@@ -4,12 +4,13 @@ import { useState, useMemo } from "react";
 import {
   TrendingDown, ShieldAlert, AlertCircle, Wrench,
   Search, Filter, Plus, FileDown, Eye, Trash2,
-  DollarSign, Calendar, MapPin, User, X, Check
+  DollarSign, Calendar, MapPin, User, X, Check, Loader2
 } from "lucide-react";
 import useContractorStore from "@/store/useContractorStore";
 import useProjectStore from "@/store/useProjectStore";
 import useUserStore from "@/store/useUserStore";
 import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import Loader from "@/components/ui/Loader";
 import { useCurrency } from "@/store/useSettingsStore";
 
 const categoryStyles = {
@@ -32,6 +33,9 @@ export default function DeductionsPage() {
   const [showLogModal, setShowLogModal] = useState(false);
   const [selectedDeduction, setSelectedDeduction] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const loading = useContractorStore((s) => s.loading);
+  const loaded = useContractorStore((s) => s.loaded);
 
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
@@ -92,6 +96,14 @@ export default function DeductionsPage() {
     });
     setShowLogModal(false);
   };
+
+  if (loading && !loaded && deductions.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 min-h-full">
@@ -334,10 +346,10 @@ export default function DeductionsPage() {
               <button onClick={() => setShowLogModal(false)} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer">Cancel</button>
               <button
                 onClick={handleSave}
-                disabled={!form.contractorId || !form.amount || !form.site}
-                className="px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                disabled={!form.contractorId || !form.amount || !form.site || loading}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
               >
-                ✓ Log Deduction
+                {loading ? <Loader2 size={13} className="animate-spin" /> : "✓"} Log Deduction
               </button>
             </div>
           </div>

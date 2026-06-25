@@ -16,12 +16,34 @@ import useUserStore from "@/store/useUserStore";
 import axios from "axios";
 import HelpDrawer from "./HelpDrawer";
 import useSidebarStore from "@/store/useSidebarStore";
+import useNotificationStore from "@/store/useNotificationStore";
 
-const notifications = [
-  { id: 1, title: "Invoice #INV-0034 overdue",      desc: "Al-Rashid Co. · SAR 14,200 · 5 days past due",   time: "2h ago", type: "warning", read: false },
-  { id: 2, title: "Tower Block A reached 68%",       desc: "Daily progress submitted by Hassan Usman",         time: "4h ago", type: "success", read: false },
-  { id: 3, title: "Asset #AST-012 maintenance due",  desc: "Scaffolding unit requires inspection by Jun 20",  time: "1d ago", type: "info",    read: false },
-];
+function formatTimeAgo(dateInput) {
+  if (!dateInput) return "just now";
+  const date = new Date(dateInput);
+  const now = new Date();
+  const seconds = Math.floor((now - date) / 1000);
+  
+  if (seconds < 0) return "just now";
+  
+  const intervals = {
+    yr: 31536000,
+    mo: 2592000,
+    wk: 604800,
+    d: 86400,
+    h: 3600,
+    m: 60,
+    s: 1
+  };
+  
+  for (const [key, value] of Object.entries(intervals)) {
+    const count = Math.floor(seconds / value);
+    if (count >= 1) {
+      return `${count}${key} ago`;
+    }
+  }
+  return "just now";
+}
 
 const NT = {
   warning: {
@@ -55,6 +77,10 @@ const routeMetadata = {
   "/projects": {
     title: "All Projects",
     breadcrumbs: [{ label: "Home", href: "/" }, { label: "Projects", href: "/projects" }]
+  },
+  "/notifications": {
+    title: "System Notifications",
+    breadcrumbs: [{ label: "Home", href: "/" }, { label: "System" }, { label: "Notifications", href: "/notifications" }]
   },
   "/scopes": {
     title: "Scope Library",
@@ -113,7 +139,21 @@ export default function TopBar() {
   const [searchResults,  setSearchResults]  = useState({ workers: [], contractors: [], teams: [] });
   const [loadingSearch,  setLoadingSearch]  = useState(false);
   const [helpOpen,       setHelpOpen]       = useState(false);
-  const [notifs,         setNotifs]         = useState(notifications);
+  
+  const {
+    notifications: notifs,
+    fetchNotifications,
+    markAllAsRead: markAllRead,
+    dismissNotification: dismiss,
+    markAsRead
+  } = useNotificationStore();
+
+  useEffect(() => {
+    fetchNotifications();
+    const interval = setInterval(fetchNotifications, 30000);
+    return () => clearInterval(interval);
+  }, [fetchNotifications]);
+
   const [userMenuOpen,   setUserMenuOpen]   = useState(false);
   const [dateParts,      setDateParts]      = useState({ monthShort: "", dayNum: "", weekday: "", yearNum: "" });
   const [mobileSearch,   setMobileSearch]   = useState(false);
@@ -178,8 +218,7 @@ export default function TopBar() {
     return () => clearTimeout(delayDebounce);
   }, [searchQuery]);
 
-  const markAllRead = () => setNotifs((n) => n.map((x) => ({ ...x, read: true })));
-  const dismiss     = (id) => setNotifs((n) => n.filter((x) => x.id !== id));
+  // Fetch meta for current route
 
   const projects = useProjectStore((s) => s.projects);
 
@@ -526,6 +565,7 @@ export default function TopBar() {
                   const Icon = s.icon;
                   return (
                     <div key={n.id}
+                      onClick={() => !n.read && markAsRead(n.id)}
                       className={`px-4 py-3 flex items-start gap-3 border-b border-border cursor-pointer transition-colors hover:bg-muted
                         ${n.read ? 'bg-transparent' : s.bgClass}`}
                     >
@@ -534,8 +574,8 @@ export default function TopBar() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className={`text-[13px] text-foreground leading-snug ${n.read ? 'font-normal' : 'font-semibold'}`}>{n.title}</p>
-                        <p className="text-[11.5px] text-muted-foreground mt-0.5">{n.desc}</p>
-                        <p className="text-[10.5px] text-muted-foreground/70 mt-1">{n.time}</p>
+                        <p className="text-[11.5px] text-muted-foreground mt-0.5">{n.description}</p>
+                        <p className="text-[10.5px] text-muted-foreground/70 mt-1">{formatTimeAgo(n.createdAt)}</p>
                       </div>
                       <button onClick={(e) => { e.stopPropagation(); dismiss(n.id); }}
                         className="bg-transparent border-none cursor-pointer text-muted-foreground p-0.5 rounded-sm shrink-0 opacity-60 hover:opacity-100 transition-opacity"
@@ -553,11 +593,14 @@ export default function TopBar() {
                 )}
               </div>
 
-              {/* Footer */}
               <div className="p-2.5 text-center border-t border-border bg-muted/20">
-                <button className="text-xs font-semibold text-primary bg-transparent border-none cursor-pointer hover:underline">
+                <Link
+                  href="/notifications"
+                  onClick={() => setNotifOpen(false)}
+                  className="text-xs font-semibold text-primary hover:underline block w-full py-1"
+                >
                   View all notifications →
-                </button>
+                </Link>
               </div>
             </div>
           )}

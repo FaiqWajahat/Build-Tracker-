@@ -204,7 +204,7 @@ export default function OverviewTab({ projectId }) {
                         className={`w-11 h-11 rounded-lg border flex flex-col items-center justify-center cursor-pointer transition-all ${chipClass}`}
                         title={`${u.name} - ${u.overallProgress}% Complete`}
                       >
-                        <span className="text-[11px] font-black">{u.id}</span>
+                        <span className="text-[11px] font-black">{u.name.replace(/^(villa|apt|unit)\s+/i, "")}</span>
                       </button>
                     );
                   })}
@@ -295,7 +295,7 @@ export default function OverviewTab({ projectId }) {
               <div className="flex items-center gap-4">
                 <div className={`w-12 h-12 rounded-xl flex items-center justify-center text-lg font-black border
                   ${getUnitChipColor(selectedUnit.overallProgress)}`}>
-                  {selectedUnit.id}
+                  {selectedUnit.name.replace(/^(villa|apt|unit)\s+/i, "")}
                 </div>
                 <div>
                   <h3 className="text-lg font-extrabold text-foreground">{selectedUnit.name}</h3>

@@ -4,7 +4,7 @@ import { useState, useMemo } from "react";
 import {
   TrendingUp, CheckCircle2, Clipboard, AlertOctagon,
   Search, Plus, Calendar, User, Check, X, ChevronRight,
-  Filter, Clock, DollarSign, Activity, Eye, Pencil
+  Filter, Clock, DollarSign, Activity, Eye, Pencil, Trash2, Loader2
 } from "lucide-react";
 import Link from "next/link";
 import useProgressStore from "@/store/useProgressStore";
@@ -12,6 +12,8 @@ import useProjectStore from "@/store/useProjectStore";
 import useAssignmentStore from "@/store/useAssignmentStore";
 import useUserStore from "@/store/useUserStore";
 import { useCurrency } from "@/store/useSettingsStore";
+import Loader from "@/components/ui/Loader";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
 
 const statusStyles = {
   Approved:      "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20",
@@ -23,6 +25,7 @@ export default function DailyProgressPage() {
   const currency = useCurrency();
   const logs = useProgressStore((s) => s.logs);
   const approveLog = useProgressStore((s) => s.approveLog);
+  const updateLog = useProgressStore((s) => s.updateLog);
   const deleteLog = useProgressStore((s) => s.deleteLog);
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
@@ -35,6 +38,10 @@ export default function DailyProgressPage() {
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
   const [expandedLog, setExpandedLog] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const loading = useProgressStore((s) => s.loading);
+  const loaded = useProgressStore((s) => s.loaded);
 
   /* ── KPIs ── */
   const today = new Date().toISOString().split("T")[0];
@@ -73,6 +80,14 @@ export default function DailyProgressPage() {
       return acc;
     }, {});
   }, [filtered]);
+
+  if (loading && !loaded && logs.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 min-h-full space-y-5">
@@ -252,19 +267,35 @@ export default function DailyProgressPage() {
                           {/* Actions */}
                           <div className="flex items-center gap-2 pt-1">
                             {!isReadOnly && log.status === "Under Review" && (
-                              <button
+                              <button 
                                 onClick={(e) => { e.stopPropagation(); approveLog(log.id); }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition-colors cursor-pointer"
+                                disabled={loading}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-600 font-semibold text-xs hover:bg-emerald-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                title="Approve"
                               >
-                                <Check size={12} /> Approve
+                                {loading ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} />}
+                                Approve
+                              </button>
+                            )}
+                            {!isReadOnly && log.status === "Under Review" && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); updateLog(log.id, { status: "Flagged" }); }}
+                                disabled={loading}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-600 font-semibold text-xs hover:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                title="Flag Issue"
+                              >
+                                {loading ? <Loader2 size={13} className="animate-spin" /> : <AlertOctagon size={13} />}
+                                Flag
                               </button>
                             )}
                             {!isReadOnly && (
-                              <button
-                                onClick={(e) => { e.stopPropagation(); deleteLog(log.id); setExpandedLog(null); }}
-                                className="flex items-center gap-1 px-3 py-1.5 bg-rose-500/10 text-rose-600 text-xs font-semibold rounded-lg hover:bg-rose-500/20 transition-colors cursor-pointer border-none"
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); setDeleteTarget(log); }}
+                                disabled={loading}
+                                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-destructive/10 text-destructive font-semibold text-xs hover:bg-destructive/20 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                                title="Delete Log"
                               >
-                                <X size={12} /> Delete
+                                <Trash2 size={13} /> Delete
                               </button>
                             )}
                             <Link
@@ -292,6 +323,20 @@ export default function DailyProgressPage() {
           </div>
         )}
       </div>
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deleteLog(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+          title="Delete Progress Log"
+          description="Are you sure you want to delete this progress log? This action cannot be undone."
+          itemName={`${deleteTarget.scopeName} - ${getProjectName(deleteTarget.projectId)}`}
+        />
+      )}
     </div>
   );
 }

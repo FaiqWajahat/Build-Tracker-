@@ -82,33 +82,45 @@ export async function GET() {
       "SELECT category, status, COUNT(*) as count FROM assets GROUP BY category, status"
     );
 
-    const assetCategories = {
-      "Heavy Crane": { total: 4, inUse: 3 },      // default baseline values
-      "Scaffolding": { total: 18, inUse: 12 },
-      "Power Utility": { total: 6, inUse: 4 },
-      "Excavator": { total: 3, inUse: 2 }
+    const categoriesMap = {
+      "Heavy Crane": { label: "Crane Units", total: 0, inUse: 0, colorClass: "bg-chart-3" },
+      "Scaffolding": { label: "Scaffolding Sets", total: 0, inUse: 0, colorClass: "bg-chart-2" },
+      "Power Utility": { label: "Generators", total: 0, inUse: 0, colorClass: "bg-chart-5" },
+      "Excavator": { label: "Excavators", total: 0, inUse: 0, colorClass: "bg-chart-4" },
+      "Vehicle": { label: "Vehicles", total: 0, inUse: 0, colorClass: "bg-chart-1" },
+      "Tools": { label: "Tools", total: 0, inUse: 0, colorClass: "bg-status-ahead" },
+      "Other": { label: "Other Assets", total: 0, inUse: 0, colorClass: "bg-muted" }
     };
 
     // Override/adjust defaults based on actual DB records if we have them
     assetStatsRes.rows.forEach(row => {
       const cat = row.category;
-      if (assetCategories[cat] !== undefined) {
-        const count = parseInt(row.count, 10);
-        if (row.status === "In Use") {
-          assetCategories[cat].inUse = count;
+      const status = row.status;
+      const count = parseInt(row.count, 10);
+      if (categoriesMap[cat] !== undefined) {
+        categoriesMap[cat].total += count;
+        if (status === "In Use") {
+          categoriesMap[cat].inUse += count;
         }
-        // compute total as dynamic sum or baseline max
-        assetCategories[cat].total = Math.max(assetCategories[cat].total, assetCategories[cat].inUse);
       }
     });
 
-    // Map database categories to UI display labels
-    const assetOverview = [
-      { label: "Crane Units", total: assetCategories["Heavy Crane"].total, inUse: assetCategories["Heavy Crane"].inUse, colorClass: "bg-chart-3" },
-      { label: "Scaffolding Sets", total: assetCategories["Scaffolding"].total, inUse: assetCategories["Scaffolding"].inUse, colorClass: "bg-chart-2" },
-      { label: "Generators", total: assetCategories["Power Utility"].total, inUse: assetCategories["Power Utility"].inUse, colorClass: "bg-chart-5" },
-      { label: "Excavators", total: assetCategories["Excavator"].total, inUse: assetCategories["Excavator"].inUse, colorClass: "bg-chart-4" }
-    ];
+    const totalAssetsInDb = Object.values(categoriesMap).reduce((sum, item) => sum + item.total, 0);
+    if (totalAssetsInDb === 0) {
+      categoriesMap["Heavy Crane"].total = 4; categoriesMap["Heavy Crane"].inUse = 3;
+      categoriesMap["Scaffolding"].total = 18; categoriesMap["Scaffolding"].inUse = 12;
+      categoriesMap["Power Utility"].total = 6; categoriesMap["Power Utility"].inUse = 4;
+      categoriesMap["Excavator"].total = 3; categoriesMap["Excavator"].inUse = 2;
+    }
+
+    const assetOverview = Object.values(categoriesMap)
+      .filter(item => item.total > 0)
+      .map(item => ({
+        label: item.label,
+        total: item.total,
+        inUse: item.inUse,
+        colorClass: item.colorClass
+      }));
 
     // 4. Monthly Cost & Revenue calculations (Last 6 Months)
     const months = [];
@@ -120,36 +132,15 @@ export async function GET() {
       months.push({ label, yearMonth, cost: 0, revenue: 0 });
     }
 
-    // A. Contractor payments cost grouped by month (cleared payments only)
-    const contractorPaymentsCostRes = await pool.query(
-      `SELECT TO_CHAR(date, 'YYYY-MM') as ym, SUM(amount) as amount
-       FROM contractor_payments
-       WHERE status = 'Cleared' AND date >= CURRENT_DATE - INTERVAL '6 months'
-       GROUP BY TO_CHAR(date, 'YYYY-MM')`
-    );
-
-    // B. Paid advances/expenses cost grouped by month
-    const advancesCostRes = await pool.query(
-      `SELECT TO_CHAR(date, 'YYYY-MM') as ym, SUM(amount) as amount
-       FROM advances
-       WHERE (type = 'expense' OR type = 'bonus') AND status = 'paid' AND date >= CURRENT_DATE - INTERVAL '6 months'
-       GROUP BY TO_CHAR(date, 'YYYY-MM')`
-    );
-
-    // C. Worker wages from attendance grouped by month
-    const wagesCostRes = await pool.query(
-      `SELECT TO_CHAR(a.date, 'YYYY-MM') as ym,
-              SUM(CASE 
-                WHEN w.pay_type = 'daily' THEN 
-                  w.rate * (CASE WHEN a.status = 'half-day' THEN 0.5 ELSE 1.0 END)
-                WHEN w.pay_type = 'monthly' THEN 
-                  (w.rate / 30.0) * (CASE WHEN a.status = 'half-day' THEN 0.5 ELSE 1.0 END)
-                ELSE 0
-              END) as wages
-       FROM attendance a
-       JOIN workers w ON a.worker_id = w.id
-       WHERE a.status IN ('present', 'half-day') AND a.date >= CURRENT_DATE - INTERVAL '6 months'
-       GROUP BY TO_CHAR(a.date, 'YYYY-MM')`
+    // A. Query project revenue & cost from progress logs and scope assignments
+    const projectFinancialsRes = await pool.query(
+      `SELECT TO_CHAR(pl.created_at, 'YYYY-MM') as ym,
+              SUM(pl.qty_completed * sa.client_rate) as revenue,
+              SUM(pl.qty_completed * sa.sub_rate) as cost
+       FROM progress_logs pl
+       JOIN scope_assignments sa ON pl.assignment_id = sa.id
+       WHERE pl.created_at >= CURRENT_DATE - INTERVAL '6 months'
+       GROUP BY TO_CHAR(pl.created_at, 'YYYY-MM')`
     );
 
     // Baseline historical charts (in thousands)
@@ -163,20 +154,19 @@ export async function GET() {
     };
 
     const monthlyRevenue = months.map(m => {
-      // Find database totals
-      const contractorAmt = Number(contractorPaymentsCostRes.rows.find(r => r.ym === m.yearMonth)?.amount || 0);
-      const advancesAmt = Number(advancesCostRes.rows.find(r => r.ym === m.yearMonth)?.amount || 0);
-      const wagesAmt = Number(wagesCostRes.rows.find(r => r.ym === m.yearMonth)?.wages || 0);
+      const dbRow = projectFinancialsRes.rows.find(r => r.ym === m.yearMonth);
+      const dbRevenue = Number(dbRow?.revenue || 0);
+      const dbCost = Number(dbRow?.cost || 0);
 
-      const dbTotalCost = contractorAmt + advancesAmt + wagesAmt;
-      const dbTotalCostK = Math.round(dbTotalCost / 1000);
+      const dbRevenueK = Number((dbRevenue / 1000).toFixed(2));
+      const dbCostK = Number((dbCost / 1000).toFixed(2));
 
-      // If database has recorded costs for this month, use them dynamically
-      if (dbTotalCostK > 0) {
+      // If database has project financial data, use it dynamically
+      if (dbRevenueK > 0 || dbCostK > 0) {
         return {
           month: m.label,
-          cost: dbTotalCostK,
-          revenue: Math.round(dbTotalCostK * 1.30) // 30% gross profit margin
+          cost: dbCostK,
+          revenue: dbRevenueK
         };
       }
 
@@ -201,10 +191,10 @@ export async function GET() {
       : "0.0";
 
     const financialStats = {
-      grossRevenue: `SAR ${totalRevKSum}K`,
-      totalCost: `SAR ${totalCostKSum}K`,
-      grossRevenueVal: totalRevKSum,
-      totalCostVal: totalCostKSum,
+      grossRevenue: `SAR ${Number(totalRevKSum.toFixed(2))}K`,
+      totalCost: `SAR ${Number(totalCostKSum.toFixed(2))}K`,
+      grossRevenueVal: Number(totalRevKSum.toFixed(2)),
+      totalCostVal: Number(totalCostKSum.toFixed(2)),
       netMargin: `${netMarginPercentage}%`
     };
 
@@ -225,33 +215,131 @@ export async function GET() {
        GROUP BY project_id`
     );
 
-    // Project baseline allocation maps
-    const allocationMap = {
-      "PRJ-001": { workers: 14, assets: 5 }, // defaults
-      "PRJ-002": { workers: 8, assets: 3 },
-      "PRJ-003": { workers: 6, assets: 2 }
-    };
+    const activeProjectsRes = await pool.query(
+      `SELECT display_id, name FROM projects WHERE status != 'Completed' ORDER BY created_at DESC`
+    );
 
-    // Update with real database stats
+    const projectWorkersMap = {};
     dbProjectWorkersRes.rows.forEach(row => {
-      const pid = row.project_id;
-      if (allocationMap[pid]) {
-        allocationMap[pid].workers = parseInt(row.count, 10);
-      }
+      projectWorkersMap[row.project_id] = parseInt(row.count, 10);
     });
 
+    const projectAssetsMap = {};
     dbProjectAssetsRes.rows.forEach(row => {
-      const pid = row.project_id;
-      if (allocationMap[pid]) {
-        allocationMap[pid].assets = parseInt(row.count, 10);
-      }
+      projectAssetsMap[row.project_id] = parseInt(row.count, 10);
     });
 
-    const resourceDensity = [
-      { name: "Villa", workers: allocationMap["PRJ-001"].workers, assets: allocationMap["PRJ-001"].assets },
-      { name: "Tower", workers: allocationMap["PRJ-002"].workers, assets: allocationMap["PRJ-002"].assets },
-      { name: "Mall", workers: allocationMap["PRJ-003"].workers, assets: allocationMap["PRJ-003"].assets }
-    ];
+    const resourceDensity = activeProjectsRes.rows.map(p => {
+      const nameParts = p.name.split(" ");
+      const displayName = nameParts.slice(0, 2).join(" ");
+      return {
+        name: displayName,
+        workers: projectWorkersMap[p.display_id] || 0,
+        assets: projectAssetsMap[p.display_id] || 0,
+        displayId: p.display_id
+      };
+    });
+
+    if (resourceDensity.length === 0) {
+      resourceDensity.push(
+        { name: "Villa", workers: 14, assets: 5, displayId: "PRJ-001" },
+        { name: "Tower", workers: 8, assets: 3, displayId: "PRJ-002" },
+        { name: "Mall", workers: 6, assets: 2, displayId: "PRJ-003" }
+      );
+    }
+
+    // 6. Recent Activities
+    const recentWorkersRes = await pool.query(
+      `SELECT display_id, name, trade, created_at, join_date
+       FROM workers
+       ORDER BY created_at DESC, id DESC
+       LIMIT 5`
+    );
+
+    const recentAssetsRes = await pool.query(
+      `SELECT display_id, name, category, status, created_at
+       FROM assets
+       ORDER BY created_at DESC, id DESC
+       LIMIT 5`
+    );
+
+    const recentPaymentsRes = await pool.query(
+      `SELECT cp.display_id, cp.amount, cp.status, cp.date, cp.project, c.name as contractor_name, cp.created_at
+       FROM contractor_payments cp
+       JOIN contractors c ON cp.contractor_id = c.id
+       ORDER BY cp.created_at DESC, cp.id DESC
+       LIMIT 5`
+    );
+
+    const recentProgressRes = await pool.query(
+      `SELECT pl.display_id, pl.qty_completed, pl.uom, pl.scope_name, pl.assignee_name, pl.created_at, p.name as project_name
+       FROM progress_logs pl
+       JOIN projects p ON pl.project_id = p.id
+       ORDER BY pl.created_at DESC, pl.id DESC
+       LIMIT 5`
+    );
+
+    const events = [];
+
+    // Workers
+    recentWorkersRes.rows.forEach(w => {
+      events.push({
+        type: "worker",
+        text: `New worker onboarded`,
+        sub: `${w.name} (${w.trade}) · ${w.display_id}`,
+        timestamp: w.created_at || (w.join_date ? new Date(w.join_date).toISOString() : new Date().toISOString()),
+      });
+    });
+
+    // Assets
+    recentAssetsRes.rows.forEach(a => {
+      const isAlert = a.status === "Maintenance" || a.status === "At Risk" || a.status === "Repair";
+      events.push({
+        type: isAlert ? "alert" : "worker",
+        text: isAlert ? `Asset flagged for maintenance` : `New asset registered`,
+        sub: `${a.name} (${a.category}) · ${a.status} · ${a.display_id}`,
+        timestamp: a.created_at || new Date().toISOString(),
+      });
+    });
+
+    // Payments
+    recentPaymentsRes.rows.forEach(p => {
+      events.push({
+        type: "payment",
+        text: `Sub payment ${p.status.toLowerCase()}`,
+        sub: `${p.contractor_name} · ${p.project} · SAR ${Number(p.amount).toLocaleString()}`,
+        timestamp: p.created_at || (p.date ? new Date(p.date).toISOString() : new Date().toISOString()),
+      });
+    });
+
+    // Progress
+    recentProgressRes.rows.forEach(pl => {
+      events.push({
+        type: "progress",
+        text: `Progress log submitted (+${pl.qty_completed} ${pl.uom})`,
+        sub: `${pl.scope_name} · ${pl.project_name} · by ${pl.assignee_name}`,
+        timestamp: pl.created_at || new Date().toISOString(),
+      });
+    });
+
+    // Sort events by timestamp DESC
+    events.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Slice top 5
+    let recentActivities = events.slice(0, 5);
+
+    // Fallback baseline defaults if database has very few items
+    if (recentActivities.length < 3) {
+      const baselineMock = [
+        { type: "worker", text: "3 new workers onboarded to Team #5", sub: "Mason × 2, Helper × 1", timestamp: new Date(Date.now() - 2 * 3600 * 1000).toISOString() },
+        { type: "alert", text: "Asset #AST-006 flagged for maintenance", sub: "Vehicle · Overdue", timestamp: new Date(Date.now() - 3 * 3600 * 1000).toISOString() },
+        { type: "payment", text: "Sub payment SAR 18,400 approved", sub: "Mohammad Khalid · PRJ-001", timestamp: new Date(Date.now() - 5 * 3600 * 1000).toISOString() },
+        { type: "milestone", text: "Mall Extension passed 80% completion", sub: "Milestone auto-triggered", timestamp: new Date(Date.now() - 24 * 3600 * 1000).toISOString() }
+      ];
+      // Append enough mock items to make it 4-5 items
+      const needed = 4 - recentActivities.length;
+      recentActivities = [...recentActivities, ...baselineMock.slice(0, needed)];
+    }
 
     return NextResponse.json({
       totalWorkforce,
@@ -263,7 +351,8 @@ export async function GET() {
       monthlyRevenue,
       financialStats,
       resourceDensity,
-      attendanceMarkedToday
+      attendanceMarkedToday,
+      recentActivities
     });
 
   } catch (error) {

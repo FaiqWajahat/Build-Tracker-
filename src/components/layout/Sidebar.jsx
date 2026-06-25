@@ -128,7 +128,9 @@ export default function Sidebar() {
             ) : null}
 
             {group.items.map((item) => {
-              const active = pathname === item.href;
+              const active = item.href === "/"
+                ? pathname === "/"
+                : pathname === item.href || (pathname && pathname.startsWith(item.href + "/"));
               const Icon = item.icon;
               const isCollapsed = collapsed && !isMobile;
               return (

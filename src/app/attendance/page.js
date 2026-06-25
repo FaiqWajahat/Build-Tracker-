@@ -124,7 +124,7 @@ function MarkModal({ worker, date, existing, projects, onSave, onClose }) {
     clockIn: existing?.clockIn || "07:00",
     clockOut: existing?.clockOut || "16:00",
     breakMinutes: existing?.breakMinutes ?? 60,
-    projectId: existing?.projectId || projects[0]?.id || "",
+    projectId: existing?.projectId || "",
     location: existing?.location || "",
     overtime: existing?.overtime || 0,
     notes: existing?.notes || "",
@@ -280,7 +280,7 @@ function MarkModal({ worker, date, existing, projects, onSave, onClose }) {
 /* ─── Bulk Mark Modal ───────────────────────────────────────────────────── */
 function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose }) {
   const [globalStatus, setGlobalStatus] = useState("present");
-  const [globalProject, setGlobalProject] = useState(projects[0]?.id || "");
+  const [globalProject, setGlobalProject] = useState("");
   const [globalClockIn, setGlobalClockIn] = useState("07:00");
   const [globalClockOut, setGlobalClockOut] = useState("16:00");
   const [globalBreak, setGlobalBreak] = useState(60);
@@ -301,7 +301,7 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
           clockOut: ex?.clockOut || "16:00",
           breakMinutes: ex?.breakMinutes ?? 60,
           shift: ex?.shift || "full-day",
-          projectId: ex?.projectId || (projects[0]?.id || ""),
+          projectId: ex?.projectId || "",
           location: ex?.location || "",
           notes: ex?.notes || "",
         };
@@ -311,17 +311,7 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
   const setRow = (id, k, v) => setRows((r) => r.map((row) => row.workerId === id ? { ...row, [k]: v } : row));
   const toggleAll = (v) => setRows((r) => r.map((row) => ({ ...row, included: v })));
 
-  function applyGlobal() {
-    setRows((r) => r.map((row) => ({
-      ...row,
-      status: globalStatus,
-      projectId: globalProject || row.projectId,
-      clockIn: globalClockIn,
-      clockOut: globalClockOut,
-      breakMinutes: globalBreak,
-      shift: globalShift,
-    })));
-  }
+
 
   function handleSave() {
     const entries = rows.filter((r) => r.included).map((r) => {
@@ -371,7 +361,10 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
               <div className="flex gap-1">
                 {Object.entries(STATUS_CONFIG).map(([k, v]) => (
                   <button key={k} type="button"
-                    onClick={() => setGlobalStatus(k)}
+                    onClick={() => {
+                      setGlobalStatus(k);
+                      setRows(r => r.map(row => row.included ? { ...row, status: k } : row));
+                    }}
                     className={`px-2.5 py-1.5 rounded-lg text-[10px] font-bold border transition-all ${globalStatus === k ? `${v.bg} ${v.color} border-transparent` : "bg-card border-border text-muted-foreground"}`}
                   >{v.label}</button>
                 ))}
@@ -380,33 +373,44 @@ function BulkMarkModal({ workers, date, attendance, projects, onSave, onClose })
             <div>
               <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Clock In</label>
               <input type="time" className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                value={globalClockIn} onChange={(e) => setGlobalClockIn(e.target.value)} />
+                value={globalClockIn} onChange={(e) => {
+                  const val = e.target.value;
+                  setGlobalClockIn(val);
+                  setRows(r => r.map(row => row.included ? { ...row, clockIn: val } : row));
+                }} />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Clock Out</label>
               <input type="time" className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                value={globalClockOut} onChange={(e) => setGlobalClockOut(e.target.value)} />
+                value={globalClockOut} onChange={(e) => {
+                  const val = e.target.value;
+                  setGlobalClockOut(val);
+                  setRows(r => r.map(row => row.included ? { ...row, clockOut: val } : row));
+                }} />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Break (min)</label>
               <input type="number" min="0" max="120" className="w-20 px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                value={globalBreak} onChange={(e) => setGlobalBreak(Number(e.target.value))} />
+                value={globalBreak} onChange={(e) => {
+                  const val = Number(e.target.value);
+                  setGlobalBreak(val);
+                  setRows(r => r.map(row => row.included ? { ...row, breakMinutes: val } : row));
+                }} />
             </div>
             <div>
               <label className="block text-[10px] font-semibold text-muted-foreground mb-1">Project</label>
               <select className="px-2.5 py-1.5 rounded-lg bg-card border border-border text-xs text-foreground focus:outline-none focus:ring-2 focus:ring-primary/30"
-                value={globalProject} onChange={(e) => setGlobalProject(e.target.value)}>
+                value={globalProject} onChange={(e) => {
+                  const val = e.target.value;
+                  setGlobalProject(val);
+                  if (val) {
+                    setRows(r => r.map(row => row.included ? { ...row, projectId: val } : row));
+                  }
+                }}>
                 <option value="">— Keep individual —</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
-            <button
-              type="button"
-              onClick={applyGlobal}
-              className="px-4 py-1.5 rounded-lg bg-primary text-primary-foreground text-xs font-bold hover:opacity-90 transition-opacity"
-            >
-              Apply to All
-            </button>
           </div>
         </div>
 
@@ -619,9 +623,10 @@ function DailyView({ date, workers, attendance, projects, teams, isReadOnly }) {
       {/* Roll call table */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden">
         {/* Header */}
-        <div className="grid grid-cols-[1fr_1.4fr_90px_90px_110px_110px_80px_80px_60px] gap-3 px-5 py-3 bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
+        <div className="grid grid-cols-[1.2fr_1.2fr_1.5fr_90px_90px_110px_110px_80px_80px_60px] gap-3 px-5 py-3 bg-muted/40 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider">
           <span>Worker</span>
           <span>Trade / Team</span>
+          <span>Project</span>
           <span>Status</span>
           <span>Shift</span>
           <span>Clock In</span>
@@ -638,7 +643,7 @@ function DailyView({ date, workers, attendance, projects, teams, isReadOnly }) {
 
             return (
               <div key={worker.id}
-                className={`grid grid-cols-[1fr_1.4fr_90px_90px_110px_110px_80px_80px_60px] gap-3 px-5 py-3.5 items-center hover:bg-muted/30 transition-colors group ${!rec ? "opacity-70" : ""}`}
+                className={`grid grid-cols-[1.2fr_1.2fr_1.5fr_90px_90px_110px_110px_80px_80px_60px] gap-3 px-5 py-3.5 items-center hover:bg-muted/30 transition-colors group ${!rec ? "opacity-70" : ""}`}
               >
                 {/* Worker */}
                 <div className="flex items-center gap-2.5 min-w-0">
@@ -650,10 +655,21 @@ function DailyView({ date, workers, attendance, projects, teams, isReadOnly }) {
                 </div>
 
                 {/* Trade / Team */}
-                <div>
-                  <div className="text-xs font-medium text-foreground">{worker.trade}</div>
-                  {team && <div className="text-[10px] text-muted-foreground">{team.name}</div>}
-                  {proj && <div className="text-[10px] text-primary/80 truncate">{proj.name}</div>}
+                <div className="min-w-0">
+                  <div className="text-xs font-medium text-foreground truncate">{worker.trade}</div>
+                  {team && <div className="text-[10px] text-muted-foreground truncate">{team.name}</div>}
+                </div>
+
+                {/* Project */}
+                <div className="min-w-0">
+                  {proj ? (
+                    <div className="flex items-center gap-1.5">
+                      <div className="w-1.5 h-1.5 rounded-full bg-primary/70 shrink-0" />
+                      <span className="text-[11.5px] font-semibold text-foreground truncate" title={proj.name}>{proj.name}</span>
+                    </div>
+                  ) : (
+                    <span className="text-[10px] text-muted-foreground">—</span>
+                  )}
                 </div>
 
                 {/* Status */}

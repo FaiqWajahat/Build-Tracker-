@@ -30,13 +30,15 @@ const STEP_LABELS = ["Project & Scope", "Level & Qty", "Rates & Dates", "Review"
 export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
   const currency = useCurrency();
   const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
   const scopes = useScopeStore((s) => s.scopes);
   const fetchScopes = useScopeStore((s) => s.fetchScopes);
   const addAssignment = useAssignmentStore((s) => s.addAssignment);
 
   useEffect(() => {
     fetchScopes();
-  }, [fetchScopes]);
+    fetchProjects();
+  }, [fetchScopes, fetchProjects]);
 
   const [step, setStep] = useState(0);
   const [form, setForm] = useState({
@@ -122,31 +124,35 @@ export default function AssignScopeModal({ contractor, onClose, onSuccess }) {
     if (validateStep(step)) setStep((s) => s + 1);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!validateStep(2)) return;
     const phaseBreakdown = form.phaseBreakdown.map((p) => ({ ...p, qty: Number(p.qty) || 0, done: 0 }));
     const unitBreakdown = form.unitBreakdown.map((u) => ({ ...u, qty: Number(u.qty) || 0, done: 0 }));
-    const assignment = addAssignment({
-      projectId: form.projectId,
-      scopeId: form.scopeId,
-      scopeName: selectedScope?.name || "",
-      trade: selectedScope?.trade || "",
-      tradeIcon: TRADE_ICONS[selectedScope?.trade] || "📋",
-      uom: selectedScope?.uom || "",
-      level: form.level,
-      clientRate: Number(form.clientRate) || 0,
-      subRate: Number(form.subRate),
-      assigneeType: "contractor",
-      assigneeId: contractor.id,
-      assigneeName: contractor.name,
-      targetDate: form.targetDate,
-      notes: form.notes,
-      totalQty: form.level === "project" ? Number(form.totalQty) : 0,
-      phaseBreakdown,
-      unitBreakdown,
-    });
-    onSuccess?.(assignment);
-    onClose();
+    try {
+      const assignment = await addAssignment({
+        projectId: form.projectId,
+        scopeId: form.scopeId,
+        scopeName: selectedScope?.name || "",
+        trade: selectedScope?.trade || "",
+        tradeIcon: TRADE_ICONS[selectedScope?.trade] || "📋",
+        uom: selectedScope?.uom || "",
+        level: form.level,
+        clientRate: Number(form.clientRate) || 0,
+        subRate: Number(form.subRate),
+        assigneeType: "contractor",
+        assigneeId: contractor.id,
+        assigneeName: contractor.name,
+        targetDate: form.targetDate,
+        notes: form.notes,
+        totalQty: form.level === "project" ? Number(form.totalQty) : 0,
+        phaseBreakdown,
+        unitBreakdown,
+      });
+      onSuccess?.(assignment);
+      onClose();
+    } catch (err) {
+      console.error("Assign scope error:", err);
+    }
   };
 
   const totalQtyCalc = useMemo(() => {

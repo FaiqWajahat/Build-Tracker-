@@ -57,6 +57,22 @@ export async function PUT(request, { params }) {
     const contractorRes = await pool.query(queryContractor, [intId]);
 
     const row = result.rows[0];
+
+    // Generate warning notification for rejected payment
+    const notifTitle = `Payment Rejected`;
+    const notifDesc = `Payment request of SAR ${Number(row.amount).toLocaleString()} for ${contractorRes.rows[0]?.name || "Unknown"} has been rejected.`;
+    const notifType = "warning";
+
+    try {
+      await pool.query(
+        `INSERT INTO notifications (title, description, type, project_id)
+         VALUES ($1, $2, $3, $4)`,
+        [notifTitle, notifDesc, notifType, row.project.trim()]
+      );
+    } catch (nErr) {
+      console.error("Failed to generate payment rejection notification:", nErr);
+    }
+
     const updatedPayment = {
       id: row.display_id,
       subcontractor: contractorRes.rows[0]?.name || "Unknown",

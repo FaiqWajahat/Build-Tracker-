@@ -13,6 +13,9 @@ import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
 import useScopeStore from "@/store/useScopeStore";
 import useProgressStore from "@/store/useProgressStore";
 import useUserStore from "@/store/useUserStore";
+import useContractorStore from "@/store/useContractorStore";
+import useLabourStore from "@/store/useLabourStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
 const pct = (done, total) => (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
@@ -55,30 +58,37 @@ const TRADE_ICONS = {
   "Preliminaries": "📋",
 };
 
-const CONTRACTORS = [
-  { id: "CON-001", name: "Gulf Build Co.", type: "contractor" },
-  { id: "CON-002", name: "Al-Farsi Electric", type: "contractor" },
-  { id: "CON-003", name: "Al-Nour Finishes", type: "contractor" },
-  { id: "CON-004", name: "Gulf Plumbing Co.", type: "contractor" },
-  { id: "TEAM-01", name: "Team A (In-house)", type: "team" },
-  { id: "TEAM-02", name: "Team B (In-house)", type: "team" },
-  { id: "TEAM-03", name: "Team C (In-house)", type: "team" },
-];
-
 /* ─── Main Component ──────────────────────────────────────────────────── */
 export default function AssignmentsTab({ projectId }) {
+  const currency       = useCurrency();
   const project        = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
   const allAssignments = useAssignmentStore((s) => s.assignments);
   const addAssignment  = useAssignmentStore((s) => s.addAssignment);
   const updateAssignment = useAssignmentStore((s) => s.updateAssignment);
   const deleteAssignment = useAssignmentStore((s) => s.deleteAssignment);
-  const scopes         = useScopeStore((s) => s.scopes);
-  const fetchScopes    = useScopeStore((s) => s.fetchScopes);
-  const allLogs        = useProgressStore((s) => s.logs);
+  const fetchAssignments = useAssignmentStore((s) => s.fetchAssignments);
+  const scopes           = useScopeStore((s) => s.scopes);
+  const fetchScopes      = useScopeStore((s) => s.fetchScopes);
+  const allLogs          = useProgressStore((s) => s.logs);
+
+  // Live assignee data
+  const contractors         = useContractorStore((s) => s.contractors);
+  const fetchContractorData = useContractorStore((s) => s.fetchContractorData);
+  const teams               = useLabourStore((s) => s.teams);
+  const fetchLabourData     = useLabourStore((s) => s.fetchLabourData);
+
+  // Build live assigneeOptions from DB
+  const assigneeOptions = useMemo(() => [
+    ...(contractors || []).map((c) => ({ id: c.id, name: c.name, type: "contractor" })),
+    ...(teams || []).map((t) => ({ id: t.id, name: t.name, type: "team" })),
+  ], [contractors, teams]);
 
   useEffect(() => {
     fetchScopes();
-  }, [fetchScopes]);
+    fetchAssignments(projectId);
+    fetchContractorData();
+    fetchLabourData();
+  }, [fetchScopes, fetchAssignments, fetchContractorData, fetchLabourData, projectId]);
 
   const assignments = useMemo(() => allAssignments.filter((a) => a.projectId === projectId), [allAssignments, projectId]);
   const logs        = useMemo(() => allLogs.filter((l) => l.projectId === projectId), [allLogs, projectId]);
@@ -259,6 +269,7 @@ export default function AssignmentsTab({ projectId }) {
               computeTotals={computeTotals}
               getPhaseColor={getPhaseColor}
               isReadOnly={isReadOnly}
+              currency={currency}
               onUpdate={(data) => updateAssignment(selectedAssignment.id, data)}
               onDelete={() => {
                 deleteAssignment(selectedAssignment.id);
@@ -285,10 +296,12 @@ export default function AssignmentsTab({ projectId }) {
           phases={phases}
           units={units}
           scopes={scopes}
+          assigneeOptions={assigneeOptions}
+          currency={currency}
           onClose={() => setShowWizard(false)}
-          onSave={(data) => {
-            const saved = addAssignment(data);
-            setSelectedId(saved.id);
+          onSave={async (data) => {
+            const saved = await addAssignment(data);
+            if (saved?.id) setSelectedId(saved.id);
             setShowWizard(false);
           }}
         />
@@ -298,7 +311,7 @@ export default function AssignmentsTab({ projectId }) {
 }
 
 /* ─── Assignment Detail Panel ─────────────────────────────────────────── */
-function AssignmentDetail({ assignment: a, project, logs, phases, units, computeTotals, getPhaseColor, isReadOnly, onUpdate, onDelete }) {
+function AssignmentDetail({ assignment: a, project, logs, phases, units, computeTotals, getPhaseColor, isReadOnly, currency = "SAR", onUpdate, onDelete }) {
   const [expandedUnit, setExpandedUnit] = useState(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
@@ -403,17 +416,17 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Earned Value</p>
               <p className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-                SAR {earnedValue.toLocaleString()}
+                {currency} {earnedValue.toLocaleString()}
               </p>
-              <p className="text-[10px] text-muted-foreground">of SAR {contractValue.toLocaleString()}</p>
+              <p className="text-[10px] text-muted-foreground">of {currency} {contractValue.toLocaleString()}</p>
             </div>
             <div>
               <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Client Rate</p>
               <p className="text-base font-bold text-foreground mt-1">
-                SAR {a.clientRate?.toLocaleString()} <span className="text-muted-foreground text-xs">/ {a.uom}</span>
+                {currency} {a.clientRate?.toLocaleString()} <span className="text-muted-foreground text-xs">/ {a.uom}</span>
               </p>
               {a.subRate && (
-                <p className="text-[10px] text-muted-foreground">Sub: SAR {a.subRate?.toLocaleString()}/{a.uom}</p>
+                <p className="text-[10px] text-muted-foreground">Sub: {currency} {a.subRate?.toLocaleString()}/{a.uom}</p>
               )}
             </div>
           </div>
@@ -453,7 +466,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
               <div className="grid grid-cols-[1fr_auto_auto_auto] px-4 py-2 bg-muted/40 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
                 <span>Log Date & Notes</span>
                 <span className="text-right pr-4">Qty</span>
-                <span className="text-right pr-4">Earned SAR</span>
+                <span className="text-right pr-4">Earned ({currency})</span>
                 <span className="text-right">Status</span>
               </div>
               <div className="divide-y divide-border/40 max-h-[260px] overflow-y-auto">
@@ -466,7 +479,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                       <p className="text-[10.5px] text-muted-foreground">{log.notes || "—"}</p>
                     </div>
                     <span className="text-xs font-bold text-foreground pr-4">+{log.qtyCompleted} {log.uom}</span>
-                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 pr-4">SAR {log.amountEarned?.toLocaleString()}</span>
+                    <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 pr-4">{currency} {log.amountEarned?.toLocaleString()}</span>
                     <LogStatusBadge status={log.status} />
                   </div>
                 ))}
@@ -483,7 +496,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
               <span className="text-right">Total Qty ({a.uom})</span>
               <span className="text-center">Completed Qty</span>
               <span className="text-right">Progress</span>
-              <span className="text-right">Earned SAR</span>
+              <span className="text-right">Earned ({currency})</span>
             </div>
             {(a.phaseBreakdown || []).map((pb) => {
               const phase     = (phases || []).find((ph) => ph.id === pb.phaseId);
@@ -502,15 +515,8 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                     </div>
                   </div>
                   <span className="text-right text-xs font-semibold text-muted-foreground">{pb.qty.toLocaleString()}</span>
-                  <div className="flex items-center justify-center gap-2">
-                    <input
-                      type="number"
-                      value={pb.done}
-                      onChange={(e) => handlePhaseDoneChange(pb.phaseId, e.target.value)}
-                      className="w-20 px-2 py-1 bg-card text-foreground border border-border rounded-lg text-right text-xs font-semibold outline-none focus:border-ring"
-                      min={0} max={pb.qty}
-                    />
-                    <span className="text-[10.5px] text-muted-foreground">/ {pb.qty}</span>
+                  <div className="text-center text-xs font-semibold text-foreground">
+                    {pb.done.toLocaleString()} <span className="text-[10.5px] text-muted-foreground font-normal">/ {pb.qty.toLocaleString()}</span>
                   </div>
                   <div className="text-right">
                     <span className={`text-xs font-bold ${p >= 100 ? "text-emerald-500" : p > 0 ? "text-primary" : "text-muted-foreground"}`}>
@@ -521,7 +527,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                     </div>
                   </div>
                   <span className="text-right text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                    SAR {(pb.done * a.clientRate).toLocaleString()}
+                    {currency} {(pb.done * a.clientRate).toLocaleString()}
                   </span>
                 </div>
               );
@@ -531,7 +537,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
               <span className="text-right text-xs font-black text-foreground">{totalQty.toLocaleString()}</span>
               <span className="text-center text-xs font-black text-foreground">{doneQty.toLocaleString()} {a.uom}</span>
               <span className="text-right text-xs font-black text-primary">{progress}%</span>
-              <span className="text-right text-xs font-black text-emerald-600 dark:text-emerald-400">SAR {earnedValue.toLocaleString()}</span>
+              <span className="text-right text-xs font-black text-emerald-600 dark:text-emerald-400">{currency} {earnedValue.toLocaleString()}</span>
             </div>
           </div>
         )}
@@ -544,7 +550,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
               <span className="text-right">Qty ({a.uom})</span>
               <span className="text-center">Done Qty</span>
               <span className="text-right">Progress</span>
-              <span className="text-right">Earned SAR</span>
+              <span className="text-right">Earned ({currency})</span>
             </div>
             <div className="divide-y divide-border/40 max-h-[460px] overflow-y-auto">
               {(a.unitBreakdown || []).map((ub) => {
@@ -575,15 +581,8 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                         </div>
                       </div>
                       <span className="text-right text-xs font-semibold text-muted-foreground">{ub.qty.toLocaleString()}</span>
-                      <div className="flex items-center justify-center gap-2">
-                        <input
-                          type="number"
-                          value={ub.done}
-                          onChange={(e) => handleUnitDoneChange(ub.unitId, e.target.value)}
-                          className="w-20 px-2 py-1 bg-card text-foreground border border-border rounded-lg text-right text-xs font-semibold outline-none focus:border-ring"
-                          min={0} max={ub.qty}
-                        />
-                        <span className="text-[10.5px] text-muted-foreground">/ {ub.qty}</span>
+                      <div className="text-center text-xs font-semibold text-foreground">
+                        {ub.done.toLocaleString()} <span className="text-[10.5px] text-muted-foreground font-normal">/ {ub.qty.toLocaleString()}</span>
                       </div>
                       <div className="text-right">
                         <span className={`text-xs font-bold ${p >= 100 ? "text-emerald-500" : p > 0 ? "text-primary" : "text-muted-foreground"}`}>
@@ -594,7 +593,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                         </div>
                       </div>
                       <span className="text-right text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                        SAR {(ub.done * a.clientRate).toLocaleString()}
+                        {currency} {(ub.done * a.clientRate).toLocaleString()}
                       </span>
                     </div>
                     {isExpanded && (
@@ -610,7 +609,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
                               <div key={log.id} className="flex items-center gap-3 text-[11px]">
                                 <span className="text-muted-foreground w-20 shrink-0">{log.date}</span>
                                 <span className="font-semibold text-foreground">+{log.qtyCompleted} {log.uom}</span>
-                                <span className="text-emerald-600 dark:text-emerald-400">SAR {log.amountEarned?.toLocaleString()}</span>
+                                <span className="text-emerald-600 dark:text-emerald-400">{currency} {log.amountEarned?.toLocaleString()}</span>
                                 <span className="text-muted-foreground flex-1 truncate">{log.notes}</span>
                                 <LogStatusBadge status={log.status} />
                               </div>
@@ -628,7 +627,7 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
               <span className="text-right text-xs font-black text-foreground">{totalQty.toLocaleString()} {a.uom}</span>
               <span className="text-center text-xs font-black text-foreground">{doneQty.toLocaleString()} {a.uom}</span>
               <span className="text-right text-xs font-black text-primary">{progress}%</span>
-              <span className="text-right text-xs font-black text-emerald-600 dark:text-emerald-400">SAR {earnedValue.toLocaleString()}</span>
+              <span className="text-right text-xs font-black text-emerald-600 dark:text-emerald-400">{currency} {earnedValue.toLocaleString()}</span>
             </div>
           </div>
         )}
@@ -643,16 +642,16 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
         </div>
         <div>
           <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Contract Value</p>
-          <p className="font-semibold text-foreground mt-0.5">SAR {contractValue.toLocaleString()}</p>
+          <p className="font-semibold text-foreground mt-0.5">{currency} {contractValue.toLocaleString()}</p>
         </div>
         <div>
           <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Sub Cost</p>
           <p className="font-semibold text-foreground mt-0.5">
-            {a.subRate ? `SAR ${(totalQty * a.subRate).toLocaleString()}` : "—"}
+            {a.subRate ? `${currency} ${(totalQty * a.subRate).toLocaleString()}` : "—"}
           </p>
           {a.subRate && (
             <p className="text-emerald-600 dark:text-emerald-400 text-[10.5px]">
-              Margin: SAR {((a.clientRate - a.subRate) * totalQty).toLocaleString()}
+              Margin: {currency} {((a.clientRate - a.subRate) * totalQty).toLocaleString()}
             </p>
           )}
         </div>
@@ -666,8 +665,9 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
 }
 
 /* ─── Assign Wizard ────────────────────────────────────────────────────── */
-function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSave }) {
+function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptions = [], currency = "SAR", onClose, onSave }) {
   const [step, setStep] = useState(1);
+  const [submitting, setSubmitting] = useState(false);
   const [expandedTrades, setExpandedTrades] = useState({});
   const [expandedScopes, setExpandedScopes] = useState({});
   const [scopeSearch, setScopeSearch] = useState("");
@@ -751,14 +751,31 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
     ? (form.phaseBreakdown || []).reduce((s, p) => s + (p.qty || 0), 0)
     : Number(form.totalQty) || 0;
 
-  const handleSave = () => {
-    onSave({
-      ...form,
-      projectId,
-      clientRate: Number(form.clientRate),
-      subRate: form.subRate ? Number(form.subRate) : null,
-      totalQty: Number(form.totalQty),
-    });
+  const isStep3Valid = useMemo(() => {
+    if (!form.clientRate || Number(form.clientRate) <= 0) return false;
+    if (!form.assigneeId) return false;
+    if (form.assigneeType === "contractor") {
+      if (!form.subRate || Number(form.subRate) <= 0) return false;
+    }
+    return true;
+  }, [form.clientRate, form.assigneeType, form.assigneeId, form.subRate]);
+
+  const handleSave = async () => {
+    if (!isStep3Valid) return;
+    setSubmitting(true);
+    try {
+      await onSave({
+        ...form,
+        projectId,
+        clientRate: Number(form.clientRate),
+        subRate: form.subRate ? Number(form.subRate) : null,
+        totalQty: totalQtyPreview,
+      });
+    } catch (err) {
+      // Handled by store/parent
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const canProceed = form.scopeName && form.uom;
@@ -780,7 +797,7 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
               <p className="text-[11px] text-muted-foreground">Step {step} of {STEPS.length} · {STEPS[step - 1]}</p>
             </div>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted cursor-pointer text-muted-foreground transition-colors">
+          <button onClick={onClose} disabled={submitting} className="p-2 rounded-lg hover:bg-muted cursor-pointer text-muted-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
             <X size={16} />
           </button>
         </div>
@@ -1115,6 +1132,12 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                   </div>
                 </div>
               )}
+              {totalQtyPreview <= 0 && (
+                <div className="mt-3 p-2.5 bg-rose-500/5 rounded-xl border border-rose-500/10 text-[10.5px] font-semibold text-rose-500 flex items-center gap-1.5 animate-in slide-in-from-top-1 duration-150">
+                  <AlertCircle size={12} className="shrink-0" />
+                  <span>A total quantity greater than 0 is required to proceed. Please configure your breakdown or total quantity.</span>
+                </div>
+              )}
             </div>
           )}
 
@@ -1124,37 +1147,49 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
               {/* Rates */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Client Rate (SAR / {form.uom || "unit"})</label>
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5">
+                    <span>Client Rate ({currency} / {form.uom || "unit"})</span>
+                    <span className="text-rose-500">*</span>
+                  </label>
                   <input
                     type="number"
                     value={form.clientRate}
                     onChange={(e) => setForm((f) => ({ ...f, clientRate: e.target.value }))}
                     placeholder="e.g. 350"
-                    className="block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm font-bold rounded-lg border border-border outline-none focus:border-ring"
+                    className={`block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm font-bold rounded-lg border outline-none focus:border-ring
+                      ${form.clientRate && Number(form.clientRate) <= 0 ? "border-rose-500/50" : "border-border"}`}
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Sub / Labour Rate (SAR / {form.uom || "unit"})</label>
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5">
+                    <span>Sub / Labour Rate ({currency} / {form.uom || "unit"})</span>
+                    {form.assigneeType === "contractor" && <span className="text-rose-500">*</span>}
+                  </label>
                   <input
                     type="number"
                     value={form.subRate}
                     onChange={(e) => setForm((f) => ({ ...f, subRate: e.target.value }))}
-                    placeholder="optional"
-                    className="block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm rounded-lg border border-border outline-none focus:border-ring"
+                    placeholder={form.assigneeType === "contractor" ? "e.g. 280" : "optional"}
+                    className={`block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm rounded-lg border outline-none focus:border-ring
+                      ${form.assigneeType === "contractor" && (!form.subRate || Number(form.subRate) <= 0) ? "border-rose-500/50 font-medium" : "border-border font-bold"}`}
                   />
                 </div>
               </div>
 
               {/* Assignee */}
               <div>
-                <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Assign To</label>
+                <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5">
+                  <span>Assign To</span>
+                  <span className="text-rose-500">*</span>
+                </label>
                 <div className="grid grid-cols-2 gap-2 mt-1 mb-2">
                   {["contractor", "team"].map((type) => (
                     <button
                       key={type}
+                      type="button"
                       onClick={() => setForm((f) => ({ ...f, assigneeType: type, assigneeId: "", assigneeName: "" }))}
                       className={`py-2 px-3 rounded-lg border text-xs font-semibold cursor-pointer transition-all capitalize
-                        ${form.assigneeType === type ? "bg-primary/8 border-primary/30 text-primary" : "bg-muted border-border text-muted-foreground hover:bg-muted/80"}`}
+                        ${form.assigneeType === type ? "bg-primary/8 border-primary/30 text-primary font-bold shadow-sm" : "bg-muted border-border text-muted-foreground hover:bg-muted/80"}`}
                     >
                       {type === "contractor" ? "Contractor" : "Labour Team"}
                     </button>
@@ -1163,13 +1198,14 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                 <select
                   value={form.assigneeId}
                   onChange={(e) => {
-                    const c = CONTRACTORS.find((x) => x.id === e.target.value);
+                    const c = assigneeOptions.find((x) => x.id === e.target.value);
                     setForm((f) => ({ ...f, assigneeId: e.target.value, assigneeName: c?.name || "" }));
                   }}
-                  className="block w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring cursor-pointer"
+                  className={`block w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border outline-none focus:border-ring cursor-pointer
+                    ${!form.assigneeId ? "border-rose-500/50" : "border-border"}`}
                 >
-                  <option value="">Select assignee...</option>
-                  {CONTRACTORS.filter((c) => c.type === form.assigneeType).map((c) => (
+                  <option value="">Select {form.assigneeType === "contractor" ? "contractor" : "labour team"}...</option>
+                  {assigneeOptions.filter((c) => c.type === form.assigneeType).map((c) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
@@ -1222,15 +1258,15 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
                     <span className="text-muted-foreground font-normal"> · {LEVEL_INFO[form.level]?.label}</span>
                   </p>
                   <p className="text-sm font-bold text-foreground">
-                    {totalQtyPreview.toLocaleString()} {form.uom} × SAR {form.clientRate}
+                    {totalQtyPreview.toLocaleString()} {form.uom} × {currency} {form.clientRate}
                     {" = "}
                     <span className="text-emerald-600 dark:text-emerald-400">
-                      SAR {(totalQtyPreview * Number(form.clientRate)).toLocaleString()}
+                      {currency} {(totalQtyPreview * Number(form.clientRate)).toLocaleString()}
                     </span>
                   </p>
                   {form.subRate && (
                     <p className="text-[11px] text-muted-foreground">
-                      Margin: SAR {((Number(form.clientRate) - Number(form.subRate)) * totalQtyPreview).toLocaleString()}
+                      Margin: {currency} {((Number(form.clientRate) - Number(form.subRate)) * totalQtyPreview).toLocaleString()}
                     </p>
                   )}
                 </div>
@@ -1243,7 +1279,8 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
         <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/20 shrink-0">
           <button
             onClick={step === 1 ? onClose : () => setStep((s) => s - 1)}
-            className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer transition-all border border-border"
+            disabled={submitting}
+            className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer transition-all border border-border disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {step === 1 ? "Cancel" : "← Back"}
           </button>
@@ -1251,7 +1288,10 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
             {step < 3 ? (
               <button
                 onClick={() => setStep((s) => s + 1)}
-                disabled={step === 1 && !canProceed}
+                disabled={
+                  (step === 1 && !canProceed) ||
+                  (step === 2 && totalQtyPreview <= 0)
+                }
                 className="px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
               >
                 Next →
@@ -1259,10 +1299,19 @@ function AssignWizard({ projectId, project, phases, units, scopes, onClose, onSa
             ) : (
               <button
                 onClick={handleSave}
-                disabled={!form.scopeName || !form.clientRate || !form.uom}
+                disabled={!form.scopeName || !form.uom || !isStep3Valid || submitting}
                 className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5"
               >
-                <Check size={13} /> Save Assignment
+                {submitting ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Assigning...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={13} /> Save Assignment
+                  </>
+                )}
               </button>
             )}
           </div>

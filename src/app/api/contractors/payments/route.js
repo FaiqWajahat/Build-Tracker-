@@ -62,6 +62,22 @@ export async function POST(request) {
     ]);
 
     const row = result.rows[0];
+
+    // Generate dynamic system notification for payment request
+    const notifTitle = `New Payment Request`;
+    const notifDesc = `Payment request of SAR ${Number(amount).toLocaleString()} for ${contractorName} (${project}) is pending approval.`;
+    const notifType = "info";
+
+    try {
+      await pool.query(
+        `INSERT INTO notifications (title, description, type, project_id)
+         VALUES ($1, $2, $3, $4)`,
+        [notifTitle, notifDesc, notifType, project.trim()]
+      );
+    } catch (nErr) {
+      console.error("Failed to generate payment notification:", nErr);
+    }
+
     const newPayment = {
       id: row.display_id,
       subcontractor: contractorName,

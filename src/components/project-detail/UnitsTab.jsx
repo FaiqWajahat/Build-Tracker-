@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
 import useUserStore from "@/store/useUserStore";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
 
 export default function UnitsTab({ projectId }) {
   const project = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
@@ -35,6 +36,14 @@ export default function UnitsTab({ projectId }) {
   const [bulkPhase, setBulkPhase] = useState("");
   const [showBulk, setShowBulk] = useState(false);
 
+  // Loading/submitting UX states
+  const [deleteTarget, setDeleteTarget] = useState(null); // { type: 'phase' | 'unit', id, name }
+  const [loadingPhaseId, setLoadingPhaseId] = useState(null);
+  const [loadingUnitId, setLoadingUnitId] = useState(null);
+  const [submittingPhase, setSubmittingPhase] = useState(false);
+  const [submittingUnit, setSubmittingUnit] = useState(false);
+  const [submittingBulk, setSubmittingBulk] = useState(false);
+
   if (!project) return null;
 
   const phases = project.phases || [];
@@ -51,60 +60,123 @@ export default function UnitsTab({ projectId }) {
 
   const unassignedUnits = units.filter((u) => !u.phaseId);
 
-  const handleAddPhase = () => {
-    if (!newPhaseName.trim()) return;
-    addPhase(projectId, { name: newPhaseName.trim(), colorId: newPhaseColor });
-    setNewPhaseName("");
-    setNewPhaseColor("blue");
+  const handleAddPhase = async () => {
+    if (!newPhaseName.trim() || submittingPhase) return;
+    setSubmittingPhase(true);
+    try {
+      await addPhase(projectId, { name: newPhaseName.trim(), colorId: newPhaseColor });
+      setNewPhaseName("");
+      setNewPhaseColor("blue");
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmittingPhase(false);
+    }
   };
 
-  const handleSavePhase = () => {
-    if (!editingPhase || !editingPhase.name.trim()) return;
-    updatePhase(projectId, editingPhase.id, {
-      name: editingPhase.name.trim(),
-      colorId: editingPhase.colorId,
-    });
-    setEditingPhase(null);
+  const handleSavePhase = async () => {
+    if (!editingPhase || !editingPhase.name.trim() || loadingPhaseId) return;
+    setLoadingPhaseId(editingPhase.id);
+    try {
+      await updatePhase(projectId, editingPhase.id, {
+        name: editingPhase.name.trim(),
+        colorId: editingPhase.colorId,
+      });
+      setEditingPhase(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingPhaseId(null);
+    }
   };
 
-  const handleAddUnit = (phaseId) => {
-    if (!newUnitName.trim()) return;
-    addUnit(projectId, {
-      id: newUnitId.trim() || undefined,
-      name: newUnitName.trim(),
-      phaseId,
-      type: newUnitType.trim(),
-    });
-    setNewUnitName("");
-    setNewUnitType("");
-    setNewUnitId("");
-    setAddingUnitToPhase(null);
+  const handleConfirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { type, id } = deleteTarget;
+    setDeleteTarget(null);
+
+    if (type === "phase") {
+      setLoadingPhaseId(id);
+      try {
+        await deletePhase(projectId, id);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingPhaseId(null);
+      }
+    } else if (type === "unit") {
+      setLoadingUnitId(id);
+      try {
+        await deleteUnit(projectId, id);
+      } catch (err) {
+        console.error(err);
+      } finally {
+        setLoadingUnitId(null);
+      }
+    }
   };
 
-  const handleSaveUnit = () => {
-    if (!editingUnit) return;
-    updateUnit(projectId, editingUnit.id, {
-      name: editingUnit.name,
-      type: editingUnit.type,
-      phaseId: editingUnit.phaseId,
-    });
-    setEditingUnit(null);
+  const handleAddUnit = async (phaseId) => {
+    if (!newUnitName.trim() || submittingUnit) return;
+    setSubmittingUnit(true);
+    try {
+      await addUnit(projectId, {
+        id: newUnitId.trim() || undefined,
+        name: newUnitName.trim(),
+        phaseId,
+        type: newUnitType.trim(),
+      });
+      setNewUnitName("");
+      setNewUnitType("");
+      setNewUnitId("");
+      setAddingUnitToPhase(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmittingUnit(false);
+    }
   };
 
-  const handleBulkAdd = () => {
-    const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
-    const parsed = lines.map((line, i) => {
-      const parts = line.split(",").map((p) => p.trim());
-      return {
-        id: parts[0] || undefined,
-        name: parts[1] || parts[0] || `Unit ${i + 1}`,
-        type: parts[2] || "",
-        phaseId: bulkPhase || null,
-      };
-    });
-    addBulkUnits(projectId, parsed);
-    setBulkText("");
-    setShowBulk(false);
+  const handleSaveUnit = async () => {
+    if (!editingUnit || loadingUnitId) return;
+    setLoadingUnitId(editingUnit.id);
+    try {
+      await updateUnit(projectId, editingUnit.id, {
+        name: editingUnit.name,
+        type: editingUnit.type,
+        phaseId: editingUnit.phaseId,
+      });
+      setEditingUnit(null);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoadingUnitId(null);
+    }
+  };
+
+  const handleBulkAdd = async () => {
+    if (!bulkText.trim() || submittingBulk) return;
+    setSubmittingBulk(true);
+    try {
+      const lines = bulkText.split("\n").map((l) => l.trim()).filter(Boolean);
+      const parsed = lines.map((line, i) => {
+        const parts = line.split(",").map((p) => p.trim());
+        return {
+          id: parts[0] || undefined,
+          name: parts[1] || parts[0] || `Unit ${i + 1}`,
+          type: parts[2] || "",
+          phaseId: bulkPhase || null,
+        };
+      });
+      await addBulkUnits(projectId, parsed);
+      setBulkText("");
+      setBulkPhase("");
+      setShowBulk(false);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSubmittingBulk(false);
+    }
   };
 
   return (
@@ -152,22 +224,34 @@ export default function UnitsTab({ projectId }) {
                 value={newPhaseName}
                 onChange={(e) => setNewPhaseName(e.target.value)}
                 onKeyDown={(e) => e.key === "Enter" && handleAddPhase()}
-                className="w-full px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors"
+                disabled={submittingPhase}
+                className="w-full px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors disabled:opacity-50"
               />
               <div className="flex items-center gap-2">
                 {PHASE_COLORS.map((c) => (
                   <button
                     key={c.id}
                     onClick={() => setNewPhaseColor(c.id)}
-                    className={`w-5 h-5 rounded-full transition-all ${newPhaseColor === c.id ? "ring-2 ring-offset-2 ring-foreground/30 scale-110" : ""}`}
+                    disabled={submittingPhase}
+                    className={`w-5 h-5 rounded-full transition-all disabled:opacity-50 ${newPhaseColor === c.id ? "ring-2 ring-offset-2 ring-foreground/30 scale-110" : ""}`}
                     style={{ background: c.hex }}
                   />
                 ))}
                 <button
                   onClick={handleAddPhase}
-                  className="ml-auto flex items-center gap-1 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-all cursor-pointer"
+                  disabled={submittingPhase || !newPhaseName.trim()}
+                  className="ml-auto flex items-center gap-1.5 px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 transition-all cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Plus size={12} /> Add Phase
+                  {submittingPhase ? (
+                    <>
+                      <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Adding...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Plus size={12} /> Add Phase
+                    </>
+                  )}
                 </button>
               </div>
             </div>
@@ -178,6 +262,8 @@ export default function UnitsTab({ projectId }) {
             {phases.map((phase) => {
               const col = getPhaseColor(phase.colorId);
               const count = unitsInPhase(phase.id).length;
+              const isLoadingThisPhase = loadingPhaseId === phase.id;
+
               return (
                 <div key={phase.id} className={`rounded-xl border p-3 ${col.border} ${col.bg}`}>
                   {editingPhase?.id === phase.id ? (
@@ -185,19 +271,27 @@ export default function UnitsTab({ projectId }) {
                       <input
                         value={editingPhase.name}
                         onChange={(e) => setEditingPhase({ ...editingPhase, name: e.target.value })}
-                        className="w-full px-2 py-1 text-xs bg-card rounded border border-border outline-none"
+                        disabled={isLoadingThisPhase}
+                        className="w-full px-2 py-1 text-xs bg-card rounded border border-border outline-none disabled:opacity-50"
                       />
                       <div className="flex items-center gap-1.5">
                         {PHASE_COLORS.map((c) => (
                           <button
                             key={c.id}
                             onClick={() => setEditingPhase({ ...editingPhase, colorId: c.id })}
-                            className={`w-4 h-4 rounded-full ${editingPhase.colorId === c.id ? "ring-2 ring-offset-1 ring-foreground/40" : ""}`}
+                            disabled={isLoadingThisPhase}
+                            className={`w-4 h-4 rounded-full disabled:opacity-50 ${editingPhase.colorId === c.id ? "ring-2 ring-offset-1 ring-foreground/40" : ""}`}
                             style={{ background: c.hex }}
                           />
                         ))}
-                        <button onClick={handleSavePhase} className="ml-auto p-1 rounded text-emerald-600 hover:bg-emerald-500/10 cursor-pointer"><Check size={13} /></button>
-                        <button onClick={() => setEditingPhase(null)} className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"><X size={13} /></button>
+                        {isLoadingThisPhase ? (
+                          <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin ml-auto animate-duration-500" />
+                        ) : (
+                          <>
+                            <button onClick={handleSavePhase} disabled={!editingPhase.name.trim()} className="ml-auto p-1 rounded text-emerald-600 hover:bg-emerald-500/10 cursor-pointer disabled:opacity-40"><Check size={13} /></button>
+                            <button onClick={() => setEditingPhase(null)} className="p-1 rounded text-rose-500 hover:bg-rose-500/10 cursor-pointer"><X size={13} /></button>
+                          </>
+                        )}
                       </div>
                     </div>
                   ) : (
@@ -208,14 +302,22 @@ export default function UnitsTab({ projectId }) {
                       </div>
                       {!isReadOnly && (
                         <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setEditingPhase({ id: phase.id, name: phase.name, colorId: phase.colorId })}
-                            className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-muted-foreground"
-                          ><Edit3 size={11} /></button>
-                          <button
-                            onClick={() => deletePhase(projectId, phase.id)}
-                            className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"
-                          ><Trash2 size={11} /></button>
+                          {isLoadingThisPhase ? (
+                            <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                          ) : (
+                            <>
+                              <button
+                                onClick={() => setEditingPhase({ id: phase.id, name: phase.name, colorId: phase.colorId })}
+                                disabled={!!loadingPhaseId}
+                                className="p-1 rounded hover:bg-black/5 dark:hover:bg-white/5 cursor-pointer text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+                              ><Edit3 size={11} /></button>
+                              <button
+                                onClick={() => setDeleteTarget({ type: "phase", id: phase.id, name: phase.name })}
+                                disabled={!!loadingPhaseId}
+                                className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                              ><Trash2 size={11} /></button>
+                            </>
+                          )}
                         </div>
                       )}
                     </div>
@@ -243,7 +345,8 @@ export default function UnitsTab({ projectId }) {
               {!isReadOnly && (
                 <button
                   onClick={() => setShowBulk((v) => !v)}
-                  className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer"
+                  disabled={submittingBulk}
+                  className="flex items-center gap-1 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-lg transition-all shadow-sm cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Upload size={12} /> Bulk Import
                 </button>
@@ -260,17 +363,19 @@ export default function UnitsTab({ projectId }) {
                   rows={5}
                   value={bulkText}
                   onChange={(e) => setBulkText(e.target.value)}
+                  disabled={submittingBulk}
                   placeholder={isVilla 
                     ? "801, Villa 801, GF, FF, RF\n804, Villa 804, GF, FF\n811, Villa 811, GF, FF, RF"
                     : "101, Apt 101, Ground Floor\n102, Apt 102, Ground Floor\n201, Apt 201, First Floor"
                   }
-                  className="w-full px-3 py-2 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring resize-none font-mono text-foreground"
+                  className="w-full px-3 py-2 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring resize-none font-mono text-foreground disabled:opacity-50"
                 />
                 <div className="flex items-center gap-2">
                   <select
                     value={bulkPhase}
                     onChange={(e) => setBulkPhase(e.target.value)}
-                    className="flex-1 px-2 py-1.5 bg-card text-xs border border-border rounded-lg outline-none text-foreground"
+                    disabled={submittingBulk}
+                    className="flex-1 px-2 py-1.5 bg-card text-xs border border-border rounded-lg outline-none text-foreground disabled:opacity-50"
                   >
                     <option value="">No phase</option>
                     {phases.map((ph) => (
@@ -279,9 +384,17 @@ export default function UnitsTab({ projectId }) {
                   </select>
                   <button
                     onClick={handleBulkAdd}
-                    className="px-4 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 cursor-pointer"
+                    disabled={submittingBulk || !bulkText.trim()}
+                    className="px-4 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
                   >
-                    Import
+                    {submittingBulk ? (
+                      <>
+                        <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                        <span>Importing...</span>
+                      </>
+                    ) : (
+                      "Import"
+                    )}
                   </button>
                 </div>
               </div>
@@ -314,7 +427,8 @@ export default function UnitsTab({ projectId }) {
                           setAddingUnitToPhase(phase.id);
                           setExpandedPhases((p) => ({ ...p, [phase.id]: true }));
                         }}
-                        className="flex items-center gap-1 text-[10.5px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded-md transition-colors cursor-pointer"
+                        disabled={submittingUnit}
+                        className="flex items-center gap-1 text-[10.5px] font-semibold text-primary bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded-md transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                       >
                         <Plus size={10} /> Add Unit
                       </button>
@@ -333,8 +447,9 @@ export default function UnitsTab({ projectId }) {
                           <input
                             value={newUnitId}
                             onChange={(e) => setNewUnitId(e.target.value)}
+                            disabled={submittingUnit}
                             placeholder="e.g. 801"
-                            className="block mt-0.5 w-20 px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring text-foreground"
+                            className="block mt-0.5 w-20 px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring text-foreground disabled:opacity-50"
                           />
                         </div>
                         <div className="flex-1 min-w-[120px]">
@@ -342,8 +457,9 @@ export default function UnitsTab({ projectId }) {
                           <input
                             value={newUnitName}
                             onChange={(e) => setNewUnitName(e.target.value)}
+                            disabled={submittingUnit}
                             placeholder="Villa 801"
-                            className="block mt-0.5 w-full px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring text-foreground"
+                            className="block mt-0.5 w-full px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring text-foreground disabled:opacity-50"
                           />
                         </div>
                         <div>
@@ -353,90 +469,121 @@ export default function UnitsTab({ projectId }) {
                           <input
                             value={newUnitType}
                             onChange={(e) => setNewUnitType(e.target.value)}
+                            disabled={submittingUnit}
                             placeholder={isVilla ? "GF, FF, RF" : "Subparts"}
-                            className="block mt-0.5 w-28 px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring text-foreground"
+                            className="block mt-0.5 w-28 px-2 py-1.5 text-xs bg-card border border-border rounded-lg outline-none focus:border-ring text-foreground disabled:opacity-50"
                           />
                         </div>
-                        <button
-                          onClick={() => handleAddUnit(phase.id)}
-                          className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 cursor-pointer"
-                        ><Check size={12} /></button>
-                        <button
-                          onClick={() => { setAddingUnitToPhase(null); setNewUnitName(""); setNewUnitId(""); setNewUnitType(""); }}
-                          className="px-3 py-1.5 bg-muted text-muted-foreground text-xs font-semibold rounded-lg hover:bg-muted/80 cursor-pointer"
-                        ><X size={12} /></button>
+                        {submittingUnit ? (
+                          <div className="px-3 py-1.5 bg-primary/20 text-primary rounded-lg flex items-center justify-center shrink-0">
+                            <span className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                          </div>
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => handleAddUnit(phase.id)}
+                              disabled={!newUnitName.trim()}
+                              className="px-3 py-1.5 bg-primary text-primary-foreground text-xs font-semibold rounded-lg hover:bg-primary/90 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                            ><Check size={12} /></button>
+                            <button
+                              onClick={() => { setAddingUnitToPhase(null); setNewUnitName(""); setNewUnitId(""); setNewUnitType(""); }}
+                              className="px-3 py-1.5 bg-muted text-muted-foreground text-xs font-semibold rounded-lg hover:bg-muted/80 cursor-pointer"
+                            ><X size={12} /></button>
+                          </>
+                        )}
                       </div>
                     )}
 
                     {/* Unit rows */}
                     <div className="divide-y divide-border/40">
-                      {phUnits.map((unit) => (
-                        <div key={unit.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
-                          {editingUnit?.id === unit.id ? (
-                            <div className="flex items-center gap-2 flex-1 flex-wrap">
-                              <input
-                                value={editingUnit.name}
-                                onChange={(e) => setEditingUnit({ ...editingUnit, name: e.target.value })}
-                                className="w-32 px-2 py-1 text-xs bg-card border border-border rounded outline-none text-foreground"
-                              />
-                              <input
-                                value={editingUnit.type || ""}
-                                onChange={(e) => setEditingUnit({ ...editingUnit, type: e.target.value })}
-                                placeholder={isVilla ? "GF, FF, RF" : "Subparts"}
-                                className="w-32 px-2 py-1 text-xs bg-card border border-border rounded outline-none text-foreground"
-                              />
-                              <select
-                                value={editingUnit.phaseId || ""}
-                                onChange={(e) => setEditingUnit({ ...editingUnit, phaseId: e.target.value || null })}
-                                className="px-2 py-1 text-xs bg-card border border-border rounded outline-none text-foreground"
-                              >
-                                <option value="">No phase</option>
-                                {phases.map((ph) => <option key={ph.id} value={ph.id}>{ph.name}</option>)}
-                              </select>
-                              <button onClick={handleSaveUnit} className="p-1 text-emerald-600 hover:bg-emerald-500/10 rounded cursor-pointer"><Check size={12} /></button>
-                              <button onClick={() => setEditingUnit(null)} className="p-1 text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"><X size={12} /></button>
-                            </div>
-                          ) : (
-                            <>
-                              <div className="flex items-center gap-3">
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black ${col.bg} ${col.text}`}>
-                                  {unit.id}
-                                </div>
-                                <div>
-                                  <p className="text-xs font-semibold text-foreground">{unit.name}</p>
-                                  {unit.type && (
-                                    <div className="flex flex-wrap gap-1 mt-1">
-                                      {unit.type.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean).map((t, idx) => (
-                                        <span
-                                          key={idx}
-                                          className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold border transition-all duration-200
-                                            ${isVilla 
-                                              ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 font-extrabold" 
-                                              : "bg-muted border-border text-muted-foreground font-semibold"}`}
-                                        >
-                                          {t}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
+                      {phUnits.map((unit) => {
+                        const isLoadingThisUnit = loadingUnitId === unit.id;
+
+                        return (
+                          <div key={unit.id} className="flex items-center justify-between px-4 py-2.5 hover:bg-muted/20 transition-colors">
+                            {editingUnit?.id === unit.id ? (
+                              <div className="flex items-center gap-2 flex-1 flex-wrap">
+                                <input
+                                  value={editingUnit.name}
+                                  onChange={(e) => setEditingUnit({ ...editingUnit, name: e.target.value })}
+                                  disabled={isLoadingThisUnit}
+                                  className="w-32 px-2 py-1 text-xs bg-card border border-border rounded outline-none text-foreground disabled:opacity-50"
+                                />
+                                <input
+                                  value={editingUnit.type || ""}
+                                  onChange={(e) => setEditingUnit({ ...editingUnit, type: e.target.value })}
+                                  disabled={isLoadingThisUnit}
+                                  placeholder={isVilla ? "GF, FF, RF" : "Subparts"}
+                                  className="w-32 px-2 py-1 text-xs bg-card border border-border rounded outline-none text-foreground disabled:opacity-50"
+                                />
+                                <select
+                                  value={editingUnit.phaseId || ""}
+                                  onChange={(e) => setEditingUnit({ ...editingUnit, phaseId: e.target.value || null })}
+                                  disabled={isLoadingThisUnit}
+                                  className="px-2 py-1 text-xs bg-card border border-border rounded outline-none text-foreground disabled:opacity-50"
+                                >
+                                  <option value="">No phase</option>
+                                  {phases.map((ph) => <option key={ph.id} value={ph.id}>{ph.name}</option>)}
+                                </select>
+                                {isLoadingThisUnit ? (
+                                  <div className="w-4 h-4 border-2 border-primary/30 border-t-primary rounded-full animate-spin ml-1" />
+                                ) : (
+                                  <>
+                                    <button onClick={handleSaveUnit} disabled={!editingUnit.name.trim()} className="p-1 text-emerald-600 hover:bg-emerald-500/10 rounded cursor-pointer disabled:opacity-40"><Check size={12} /></button>
+                                    <button onClick={() => setEditingUnit(null)} className="p-1 text-rose-500 hover:bg-rose-500/10 rounded cursor-pointer"><X size={12} /></button>
+                                  </>
+                                )}
                               </div>
-                              {!isReadOnly && (
-                                <div className="flex items-center gap-1">
-                                  <button
-                                    onClick={() => setEditingUnit({ ...unit })}
-                                    className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground"
-                                  ><Edit3 size={11} /></button>
-                                  <button
-                                    onClick={() => deleteUnit(projectId, unit.id)}
-                                    className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"
-                                  ><Trash2 size={11} /></button>
+                            ) : (
+                              <>
+                                <div className="flex items-center gap-3">
+                                  <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-black ${col.bg} ${col.text}`}>
+                                    {unit.id}
+                                  </div>
+                                  <div>
+                                    <p className="text-xs font-semibold text-foreground">{unit.name}</p>
+                                    {unit.type && (
+                                      <div className="flex flex-wrap gap-1 mt-1">
+                                        {unit.type.split(/[\s,;]+/).map((t) => t.trim()).filter(Boolean).map((t, idx) => (
+                                          <span
+                                            key={idx}
+                                            className={`text-[9.5px] px-1.5 py-0.5 rounded font-bold border transition-all duration-200
+                                              ${isVilla 
+                                                ? "bg-amber-500/10 border-amber-500/20 text-amber-600 dark:text-amber-400 font-extrabold" 
+                                                : "bg-muted border-border text-muted-foreground font-semibold"}`}
+                                          >
+                                            {t}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    )}
+                                  </div>
                                 </div>
-                              )}
-                            </>
-                          )}
-                        </div>
-                      ))}
+                                {!isReadOnly && (
+                                  <div className="flex items-center gap-1">
+                                    {isLoadingThisUnit ? (
+                                      <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                                    ) : (
+                                      <>
+                                        <button
+                                          onClick={() => setEditingUnit({ ...unit })}
+                                          disabled={!!loadingUnitId}
+                                          className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+                                        ><Edit3 size={11} /></button>
+                                        <button
+                                          onClick={() => setDeleteTarget({ type: "unit", id: unit.id, name: unit.name })}
+                                          disabled={!!loadingUnitId}
+                                          className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                                        ><Trash2 size={11} /></button>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })}
                       {phUnits.length === 0 && (
                         <p className="text-[11px] text-muted-foreground text-center py-4">
                           No units in {phase.name} yet.
@@ -466,8 +613,22 @@ export default function UnitsTab({ projectId }) {
                     </div>
                     {!isReadOnly && (
                       <div className="flex items-center gap-1">
-                        <button onClick={() => setEditingUnit({ ...unit })} className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground"><Edit3 size={11} /></button>
-                        <button onClick={() => deleteUnit(projectId, unit.id)} className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500"><Trash2 size={11} /></button>
+                        {loadingUnitId === unit.id ? (
+                          <div className="w-3.5 h-3.5 border-2 border-primary/30 border-t-primary rounded-full animate-spin" />
+                        ) : (
+                          <>
+                            <button
+                              onClick={() => setEditingUnit({ ...unit })}
+                              disabled={!!loadingUnitId}
+                              className="p-1 rounded hover:bg-muted cursor-pointer text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"
+                            ><Edit3 size={11} /></button>
+                            <button
+                              onClick={() => setDeleteTarget({ type: "unit", id: unit.id, name: unit.name })}
+                              disabled={!!loadingUnitId}
+                              className="p-1 rounded hover:bg-rose-500/10 cursor-pointer text-rose-500 disabled:opacity-40 disabled:cursor-not-allowed"
+                            ><Trash2 size={11} /></button>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -486,6 +647,22 @@ export default function UnitsTab({ projectId }) {
           )}
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmModal
+        isOpen={!!deleteTarget}
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={handleConfirmDelete}
+        title={deleteTarget?.type === "phase" ? "Delete Phase" : "Delete Unit"}
+        description={
+          deleteTarget?.type === "phase"
+            ? "Are you sure you want to delete this phase? All units associated with this phase will become unassigned."
+            : "Are you sure you want to delete this unit? This will remove it from the project structure."
+        }
+        confirmText="Delete"
+        cancelText="Cancel"
+        itemName={deleteTarget?.name}
+      />
     </div>
   );
 }

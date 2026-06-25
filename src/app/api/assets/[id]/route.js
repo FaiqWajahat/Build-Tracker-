@@ -76,6 +76,23 @@ export async function PUT(request, { params }) {
 
     const row = result.rows[0];
 
+    // Generate dynamic system notification for asset alert
+    if (status === "Under Maintenance" || status === "Inspection Due") {
+      const notifTitle = `Asset Alert: ${name ? name.trim() : row.name}`;
+      const notifDesc = `Asset #${row.display_id} is now ${status.toLowerCase()}.${notes ? ` Notes: ${notes}` : ""}`;
+      const notifType = status === "Under Maintenance" ? "warning" : "info";
+
+      try {
+        await pool.query(
+          `INSERT INTO notifications (title, description, type, project_id)
+           VALUES ($1, $2, $3, $4)`,
+          [notifTitle, notifDesc, notifType, projectId || null]
+        );
+      } catch (nErr) {
+        console.error("Failed to generate asset status notification:", nErr);
+      }
+    }
+
     const updatedAsset = {
       id: row.display_id,
       name: row.name,

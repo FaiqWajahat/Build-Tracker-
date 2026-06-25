@@ -5,18 +5,11 @@ import { X, Search, ChevronDown, CheckCircle2, AlertCircle, Plus, FolderOpen, La
 import useAssignmentStore from "@/store/useAssignmentStore";
 import useProgressStore from "@/store/useProgressStore";
 import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
+import useContractorStore from "@/store/useContractorStore";
+import useLabourStore from "@/store/useLabourStore";
+import { useCurrency } from "@/store/useSettingsStore";
 
 const pct = (done, total) => (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
-
-const CONTRACTORS = [
-  { id: "CON-001", name: "Gulf Build Co.", type: "contractor" },
-  { id: "CON-002", name: "Al-Farsi Electric", type: "contractor" },
-  { id: "CON-003", name: "Al-Nour Finishes", type: "contractor" },
-  { id: "CON-004", name: "Gulf Plumbing Co.", type: "contractor" },
-  { id: "TEAM-01", name: "Team A (In-house)", type: "team" },
-  { id: "TEAM-02", name: "Team B (In-house)", type: "team" },
-  { id: "TEAM-03", name: "Team C (In-house)", type: "team" },
-];
 
 const LEVEL_INFO = {
   project: {
@@ -46,18 +39,50 @@ const LEVEL_INFO = {
 };
 
 export default function DailyLogModal({ projectId, onClose, prefillUnitId = null, prefillAssignmentId = null }) {
-  const project = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
+  const currency       = useCurrency();
+  const project        = useProjectStore((s) => s.projects.find((p) => p.id === projectId));
   const allAssignments = useAssignmentStore((s) => s.assignments);
-  const addLog = useProgressStore((s) => s.addLog);
-  const allLogs = useProgressStore((s) => s.logs);
+  const addLog         = useProgressStore((s) => s.addLog);
+  const allLogs        = useProgressStore((s) => s.logs);
+  const fetchAssignments = useAssignmentStore((s) => s.fetchAssignments);
+  const fetchLogs      = useProgressStore((s) => s.fetchLogs);
+
+  // Live contractor + team data
+  const contractors          = useContractorStore((s) => s.contractors);
+  const fetchContractorData  = useContractorStore((s) => s.fetchContractorData);
+  const teams                = useLabourStore((s) => s.teams);
+  const fetchLabourData      = useLabourStore((s) => s.fetchLabourData);
+
+  useEffect(() => {
+    fetchContractorData();
+    fetchLabourData();
+    fetchAssignments(projectId, true); // force=true to get fresh breakdown done values
+    fetchLogs(projectId);             // ensure logs are loaded for project-level totals
+  }, [fetchContractorData, fetchLabourData, fetchAssignments, fetchLogs, projectId]);
+
+  // Build combined assignee list from live data
+  const assigneeOptions = useMemo(() => {
+    const contractorList = (contractors || []).map((c) => ({
+      id: c.id,
+      name: c.name,
+      type: "contractor",
+    }));
+    const teamList = (teams || []).map((t) => ({
+      id: t.id,
+      name: t.name,
+      type: "team",
+    }));
+    return [...contractorList, ...teamList];
+  }, [contractors, teams]);
 
   const assignments = useMemo(() => allAssignments.filter((a) => a.projectId === projectId), [allAssignments, projectId]);
   const logs = useMemo(() => allLogs.filter((l) => l.projectId === projectId), [allLogs, projectId]);
 
   const phases = project?.phases || [];
-  const units = project?.units || [];
+  const units  = project?.units  || [];
 
   const [saved, setSaved] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [form, setForm] = useState({
     assignmentId: prefillAssignmentId || "",
@@ -75,38 +100,47 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
 
   const selectedAssignment = assignments.find((a) => a.id === form.assignmentId);
 
-  // Sync form when selected assignment changes (either on load or when user selects one)
+  // Sync form when selected assignment changes
   useEffect(() => {
     if (selectedAssignment) {
-      // Find matches in CONTRACTORS to obtain assigneeId
-      const matchedContractor = CONTRACTORS.find(
-        (c) => c.name.toLowerCase() === selectedAssignment.assigneeName?.toLowerCase()
+      // Try to resolve the assignee from live data
+      const matchedAssignee = assigneeOptions.find(
+        (c) =>
+          c.id === selectedAssignment.assigneeId ||
+          c.name.toLowerCase() === selectedAssignment.assigneeName?.toLowerCase()
       );
 
       setForm((f) => ({
         ...f,
-        level: selectedAssignment.level || "project",
+        level:        selectedAssignment.level || "project",
         assigneeType: selectedAssignment.assigneeType || "contractor",
-        assigneeId: matchedContractor?.id || selectedAssignment.assigneeId || "",
-        assigneeName: selectedAssignment.assigneeName || "",
-        unitId: selectedAssignment.level === "unit" ? (prefillUnitId || "") : "",
-        phaseId: "",
+        assigneeId:   matchedAssignee?.id || selectedAssignment.assigneeId || "",
+        assigneeName: matchedAssignee?.name || selectedAssignment.assigneeName || "",
+        unitId:       selectedAssignment.level === "unit" ? (prefillUnitId || "") : "",
+        phaseId:      selectedAssignment.level === "phase" ? "" : "",
       }));
     }
-  }, [selectedAssignment, prefillUnitId]);
+  }, [selectedAssignment?.id, prefillUnitId, assigneeOptions.length]);
 
-  /* ── Running total for context ── */
+  /* ── Running total — read from assignment breakdown (always in sync with DB) ── */
   const runningTotal = useMemo(() => {
     if (!selectedAssignment) return 0;
+
+    // For unit-level: use the unitBreakdown.done for the selected unit
+    if (selectedAssignment.level === "unit" && form.unitId) {
+      const ub = (selectedAssignment.unitBreakdown || []).find((u) => u.unitId === form.unitId);
+      return ub?.done ?? 0;
+    }
+    // For phase-level: use the phaseBreakdown.done for the selected phase
+    if (selectedAssignment.level === "phase" && form.phaseId) {
+      const pb = (selectedAssignment.phaseBreakdown || []).find((p) => p.phaseId === form.phaseId);
+      return pb?.done ?? 0;
+    }
+    // For project-level: sum all logs for this assignment (logs are always fetched at project-detail load)
     return logs
-      .filter((l) => {
-        if (l.assignmentId !== form.assignmentId) return false;
-        if (form.level === "unit") return l.unitId === form.unitId;
-        if (form.level === "phase") return l.phaseId === form.phaseId;
-        return true; // project level: total progress logged so far for the entire assignment
-      })
+      .filter((l) => l.assignmentId === form.assignmentId)
       .reduce((s, l) => s + (l.qtyCompleted || 0), 0);
-  }, [logs, form.assignmentId, form.level, form.unitId, form.phaseId]);
+  }, [selectedAssignment, form.assignmentId, form.level, form.unitId, form.phaseId, logs]);
 
   const targetQty = useMemo(() => {
     if (!selectedAssignment) return 0;
@@ -126,58 +160,60 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
 
   const getPhaseColor = (colorId) => PHASE_COLORS.find((c) => c.id === colorId) || PHASE_COLORS[0];
 
+  const maxQty = useMemo(() => {
+    if (!selectedAssignment) return Infinity;
+    if (form.level === "unit" && !form.unitId) return 0;
+    if (form.level === "phase" && !form.phaseId) return 0;
+    return Math.max(0, targetQty - runningTotal);
+  }, [selectedAssignment, form.level, form.unitId, form.phaseId, targetQty, runningTotal]);
+
   const isValid = useMemo(() => {
     if (!form.assignmentId || !form.qtyCompleted || Number(form.qtyCompleted) <= 0) return false;
-    if (form.level === "unit" && !form.unitId) return false;
+    if (form.level === "unit"  && !form.unitId)  return false;
     if (form.level === "phase" && !form.phaseId) return false;
+    if (Number(form.qtyCompleted) > maxQty) return false;
     if (!form.assigneeId) return false;
     return true;
-  }, [form.assignmentId, form.qtyCompleted, form.level, form.unitId, form.phaseId, form.assigneeId]);
+  }, [form.assignmentId, form.qtyCompleted, form.level, form.unitId, form.phaseId, form.assigneeId, maxQty]);
 
-  const handleSave = () => {
-    if (!selectedAssignment || !isValid) return;
+  const handleSave = async () => {
+    if (!selectedAssignment || !isValid || submitting) return;
+    setSubmitting(true);
 
-    addLog({
-      projectId,
-      assignmentId: form.assignmentId,
-      unitId: form.level === "unit" ? form.unitId : null,
-      phaseId: form.level === "phase" ? form.phaseId : null,
-      scopeName: selectedAssignment.scopeName,
-      uom: selectedAssignment.uom,
-      date: form.date,
-      qtyCompleted: Number(form.qtyCompleted),
-      rate: selectedAssignment.clientRate,
-      amountEarned: earned,
-      assigneeType: form.assigneeType,
-      assigneeName: form.assigneeName,
-      assigneeId: form.assigneeId,
-      notes: form.notes,
-      signedBy: form.signedBy,
-      status: "Under Review",
-    });
+    try {
+      await addLog({
+        projectId,
+        assignmentId: form.assignmentId,
+        unitId:       form.level === "unit"  ? form.unitId  : null,
+        phaseId:      form.level === "phase" ? form.phaseId : null,
+        scopeName:    selectedAssignment.scopeName,
+        uom:          selectedAssignment.uom,
+        date:         form.date,
+        qtyCompleted: Number(form.qtyCompleted),
+        rate:         selectedAssignment.clientRate,
+        amountEarned: earned,
+        assigneeType: form.assigneeType,
+        assigneeName: form.assigneeName,
+        assigneeId:   form.assigneeId,
+        notes:        form.notes,
+        signedBy:     form.signedBy,
+        status:       "Under Review",
+      });
 
-    // Update the assignment's done qty directly if progress level matches assignment level
-    if (selectedAssignment.level === "unit" && form.level === "unit" && form.unitId) {
-      const ub = (selectedAssignment.unitBreakdown || []).find((u) => u.unitId === form.unitId);
-      if (ub) {
-        const newDone = Math.min(ub.qty, ub.done + Number(form.qtyCompleted));
-        const updatedBreakdown = (selectedAssignment.unitBreakdown || []).map((u) =>
-          u.unitId === form.unitId ? { ...u, done: newDone } : u
-        );
-        useAssignmentStore.getState().updateAssignment(selectedAssignment.id, { unitBreakdown: updatedBreakdown });
-      }
-    } else if (selectedAssignment.level === "phase" && form.level === "phase" && form.phaseId) {
-      const pb = (selectedAssignment.phaseBreakdown || []).find((p) => p.phaseId === form.phaseId);
-      if (pb) {
-        const newDone = Math.min(pb.qty, pb.done + Number(form.qtyCompleted));
-        const updatedBreakdown = (selectedAssignment.phaseBreakdown || []).map((p) =>
-          p.phaseId === form.phaseId ? { ...p, done: newDone } : p
-        );
-        useAssignmentStore.getState().updateAssignment(selectedAssignment.id, { phaseBreakdown: updatedBreakdown });
-      }
+      // Optimistic update on the assignment breakdown in local store
+      useAssignmentStore.getState().applyProgressOptimistic(
+        form.assignmentId,
+        form.level === "unit"  ? form.unitId  : null,
+        form.level === "phase" ? form.phaseId : null,
+        Number(form.qtyCompleted)
+      );
+
+      setSaved(true);
+    } catch (err) {
+      // Error toast handled by the store
+    } finally {
+      setSubmitting(false);
     }
-
-    setSaved(true);
   };
 
   const handleLogAnother = () => {
@@ -198,7 +234,7 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
             <h3 className="text-sm font-bold text-foreground">Log Daily Progress</h3>
             <p className="text-[11px] text-muted-foreground">{project?.name}</p>
           </div>
-          <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted cursor-pointer text-muted-foreground"><X size={16} /></button>
+          <button onClick={onClose} disabled={submitting} className="p-2 rounded-lg hover:bg-muted cursor-pointer text-muted-foreground disabled:opacity-40 disabled:cursor-not-allowed"><X size={16} /></button>
         </div>
 
         {/* Saved state */}
@@ -210,9 +246,9 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
             <div>
               <h4 className="text-sm font-bold text-foreground">Progress Logged!</h4>
               <p className="text-xs text-muted-foreground mt-1">
-                +{form.qtyCompleted} {selectedAssignment?.uom} · SAR {earned.toLocaleString()} earned
+                +{form.qtyCompleted} {selectedAssignment?.uom} · {currency} {earned.toLocaleString()} earned
               </p>
-              {form.level === "unit" && form.unitId && <p className="text-[10.5px] text-muted-foreground">Unit {form.unitId} · {selectedAssignment?.scopeName}</p>}
+              {form.level === "unit"  && form.unitId  && <p className="text-[10.5px] text-muted-foreground">Unit {form.unitId} · {selectedAssignment?.scopeName}</p>}
               {form.level === "phase" && form.phaseId && <p className="text-[10.5px] text-muted-foreground">Phase {form.phaseId} · {selectedAssignment?.scopeName}</p>}
               {form.level === "project" && <p className="text-[10.5px] text-muted-foreground">Project Level · {selectedAssignment?.scopeName}</p>}
               <p className="text-[10.5px] text-primary/80 font-medium mt-1">Completed by: {form.assigneeName} ({form.assigneeType === "contractor" ? "Contractor" : "Labour Team"})</p>
@@ -233,44 +269,50 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
               <div>
                 <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Select Scope Assignment</label>
                 <div className="mt-1.5 border border-border rounded-xl overflow-hidden max-h-[160px] overflow-y-auto">
-                  {assignments.map((a) => {
-                    const active = form.assignmentId === a.id;
-                    return (
-                      <button
-                        key={a.id}
-                        onClick={() => {
-                          const matchedContractor = CONTRACTORS.find(
-                            (c) => c.name.toLowerCase() === a.assigneeName?.toLowerCase()
-                          );
-                          setForm((f) => ({
-                            ...f,
-                            assignmentId: a.id,
-                            level: a.level || "project",
-                            unitId: a.level === "unit" ? (prefillUnitId || "") : "",
-                            phaseId: "",
-                            assigneeType: a.assigneeType || "contractor",
-                            assigneeId: matchedContractor?.id || a.assigneeId || "",
-                            assigneeName: a.assigneeName || "",
-                          }));
-                        }}
-                        className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-colors cursor-pointer border-b border-border/40 last:border-b-0
-                          ${active ? "bg-primary/8 text-primary font-semibold" : "hover:bg-muted/40 text-foreground"}`}
-                      >
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm shrink-0">{a.tradeIcon}</span>
-                          <div>
-                            <p className="text-xs font-semibold">{a.scopeName}</p>
-                            <p className="text-[10px] text-muted-foreground capitalize">{a.level} · {a.uom} · {a.assigneeName}</p>
+                  {assignments.length === 0 ? (
+                    <p className="text-xs text-muted-foreground p-3 text-center">No scope assignments found for this project.</p>
+                  ) : (
+                    assignments.map((a) => {
+                      const active = form.assignmentId === a.id;
+                      return (
+                        <button
+                          key={a.id}
+                          onClick={() => {
+                            const matchedAssignee = assigneeOptions.find(
+                              (c) =>
+                                c.id === a.assigneeId ||
+                                c.name.toLowerCase() === a.assigneeName?.toLowerCase()
+                            );
+                            setForm((f) => ({
+                              ...f,
+                              assignmentId: a.id,
+                              level:        a.level || "project",
+                              unitId:       a.level === "unit" ? (prefillUnitId || "") : "",
+                              phaseId:      "",
+                              assigneeType: a.assigneeType || "contractor",
+                              assigneeId:   matchedAssignee?.id || a.assigneeId || "",
+                              assigneeName: matchedAssignee?.name || a.assigneeName || "",
+                            }));
+                          }}
+                          className={`w-full text-left px-3 py-2.5 flex items-center justify-between transition-colors cursor-pointer border-b border-border/40 last:border-b-0
+                            ${active ? "bg-primary/8 text-primary font-semibold" : "hover:bg-muted/40 text-foreground"}`}
+                        >
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm shrink-0">{a.tradeIcon}</span>
+                            <div>
+                              <p className="text-xs font-semibold">{a.scopeName}</p>
+                              <p className="text-[10px] text-muted-foreground capitalize">{a.level} · {a.uom} · {a.assigneeName}</p>
+                            </div>
                           </div>
-                        </div>
-                        {active && <CheckCircle2 size={14} className="text-primary shrink-0" />}
-                      </button>
-                    );
-                  })}
+                          {active && <CheckCircle2 size={14} className="text-primary shrink-0" />}
+                        </button>
+                      );
+                    })
+                  )}
                 </div>
               </div>
 
-              {/* Step 2: Level Toggle Selector */}
+              {/* Step 2: Level Toggle Selector (locked to assignment level by default, overridable) */}
               {selectedAssignment && (
                 <div>
                   <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Progress Level</label>
@@ -282,12 +324,7 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                         <button
                           key={key}
                           type="button"
-                          onClick={() => setForm((f) => ({
-                            ...f,
-                            level: key,
-                            unitId: "",
-                            phaseId: ""
-                          }))}
+                          onClick={() => setForm((f) => ({ ...f, level: key, unitId: "", phaseId: "" }))}
                           className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between h-[68px]
                             ${active ? `${info.border} ${info.bg}` : "border-border bg-muted/30 hover:bg-muted/60"}`}
                         >
@@ -306,7 +343,7 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                 </div>
               )}
 
-              {/* Step 3: Unit / Phase selection (if applicable) */}
+              {/* Step 3a: Unit selection */}
               {selectedAssignment && form.level === "unit" && (
                 <div>
                   <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center justify-between">
@@ -319,27 +356,32 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                     className="block mt-1 w-full px-3 py-2.5 bg-muted text-xs text-foreground rounded-xl border border-border outline-none focus:border-ring cursor-pointer"
                   >
                     <option value="">Select unit...</option>
-                    {phases.map((phase) => {
-                      const col = getPhaseColor(phase.colorId);
-                      const phUnits = units.filter((u) => u.phaseId === phase.id);
-                      return (
-                        <optgroup key={phase.id} label={phase.name}>
-                          {phUnits.map((u) => {
-                            const ub = (selectedAssignment.unitBreakdown || []).find((x) => x.unitId === u.id);
-                            const p = ub ? pct(ub.done, ub.qty) : 0;
-                            return (
-                              <option key={u.id} value={u.id}>
-                                {u.name} ({p}% done · {ub ? `${ub.done}/${ub.qty}` : "not assigned"} {selectedAssignment.uom})
-                              </option>
-                            );
-                          })}
-                        </optgroup>
-                      );
-                    })}
+                    {phases.length > 0
+                      ? phases.map((phase) => {
+                          const phUnits = units.filter((u) => u.phaseId === phase.id);
+                          return (
+                            <optgroup key={phase.id} label={phase.name}>
+                              {phUnits.map((u) => {
+                                const ub = (selectedAssignment.unitBreakdown || []).find((x) => x.unitId === u.id);
+                                const p  = ub ? pct(ub.done, ub.qty) : null;
+                                return (
+                                  <option key={u.id} value={u.id}>
+                                    {u.name}{p !== null ? ` (${p}% · ${ub.done}/${ub.qty} ${selectedAssignment.uom})` : ""}
+                                  </option>
+                                );
+                              })}
+                            </optgroup>
+                          );
+                        })
+                      : units.map((u) => (
+                          <option key={u.id} value={u.id}>{u.name}</option>
+                        ))
+                    }
                   </select>
                 </div>
               )}
 
+              {/* Step 3b: Phase selection */}
               {selectedAssignment && form.level === "phase" && (
                 <div>
                   <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center justify-between">
@@ -352,26 +394,25 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                     className="block mt-1 w-full px-3 py-2.5 bg-muted text-xs text-foreground rounded-xl border border-border outline-none focus:border-ring cursor-pointer"
                   >
                     <option value="">Select phase...</option>
-                    {selectedAssignment.level === "phase" && selectedAssignment.phaseBreakdown?.length > 0 ? (
-                      selectedAssignment.phaseBreakdown.map((pb) => {
-                        const p = pct(pb.done, pb.qty);
-                        return (
-                          <option key={pb.phaseId} value={pb.phaseId}>
-                            {pb.phaseName} ({p}% · {pb.done}/{pb.qty} {selectedAssignment.uom})
-                          </option>
-                        );
-                      })
-                    ) : (
-                      phases.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.name} (Project Pool)
-                        </option>
-                      ))
-                    )}
+                    {/* If assignment has a phaseBreakdown, show those with progress context */}
+                    {selectedAssignment.phaseBreakdown?.length > 0
+                      ? selectedAssignment.phaseBreakdown.map((pb) => {
+                          const p = pct(pb.done, pb.qty);
+                          return (
+                            <option key={pb.phaseId} value={pb.phaseId}>
+                              {pb.phaseName} ({p}% · {pb.done}/{pb.qty} {selectedAssignment.uom})
+                            </option>
+                          );
+                        })
+                      : phases.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))
+                    }
                   </select>
                 </div>
               )}
 
+              {/* Project level info */}
               {selectedAssignment && form.level === "project" && (
                 <div className="p-3 bg-blue-500/5 border border-blue-500/10 rounded-xl flex items-center gap-2.5 text-xs text-blue-600 dark:text-blue-400 animate-in slide-in-from-top-1 duration-150">
                   <FolderOpen size={16} />
@@ -379,7 +420,7 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                 </div>
               )}
 
-              {/* Step 4: Who Completed the Work (Assignee selector) */}
+              {/* Step 4: Completed By */}
               {selectedAssignment && (
                 <div className="space-y-2">
                   <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center justify-between">
@@ -407,20 +448,22 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                   <select
                     value={form.assigneeId}
                     onChange={(e) => {
-                      const c = CONTRACTORS.find((x) => x.id === e.target.value);
-                      setForm((f) => ({ ...f, assigneeId: e.target.value, assigneeName: c?.name || "" }));
+                      const found = assigneeOptions.find((x) => x.id === e.target.value);
+                      setForm((f) => ({ ...f, assigneeId: e.target.value, assigneeName: found?.name || "" }));
                     }}
                     className="block w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring cursor-pointer"
                   >
                     <option value="">Select assignee...</option>
-                    {CONTRACTORS.filter((c) => c.type === form.assigneeType).map((c) => (
-                      <option key={c.id} value={c.id}>{c.name}</option>
-                    ))}
+                    {assigneeOptions
+                      .filter((c) => c.type === form.assigneeType)
+                      .map((c) => (
+                        <option key={c.id} value={c.id}>{c.name}</option>
+                      ))}
                   </select>
                 </div>
               )}
 
-              {/* Progress context box */}
+              {/* Progress context */}
               {selectedAssignment && (
                 <div className="p-4 bg-muted/30 rounded-xl border border-border/60 space-y-2">
                   <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Running Progress Preview</p>
@@ -457,7 +500,7 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                   )}
                   {form.qtyCompleted && (
                     <p className="text-[10.5px] text-emerald-600 dark:text-emerald-400 font-semibold text-center mt-1">
-                      Amount Earned: SAR {earned.toLocaleString()} ({Number(form.qtyCompleted)} × SAR {selectedAssignment.clientRate})
+                      Amount Earned: {currency} {earned.toLocaleString()} ({Number(form.qtyCompleted)} × {currency} {selectedAssignment.clientRate})
                     </p>
                   )}
                 </div>
@@ -475,17 +518,28 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                    Qty Completed ({selectedAssignment?.uom || "unit"})
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center justify-between">
+                    <span>Qty Completed ({selectedAssignment?.uom || "unit"})</span>
+                    {selectedAssignment && (
+                      <span className="text-[9.5px] text-primary lowercase font-semibold">
+                        (max remaining: {maxQty})
+                      </span>
+                    )}
                   </label>
                   <input
                     type="number"
                     value={form.qtyCompleted}
                     onChange={(e) => setForm((f) => ({ ...f, qtyCompleted: e.target.value }))}
                     placeholder="e.g. 45"
-                    className="block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm font-bold rounded-xl border border-border outline-none focus:border-ring"
+                    className={`block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm font-bold rounded-xl border outline-none focus:border-ring
+                      ${form.qtyCompleted && Number(form.qtyCompleted) > maxQty ? "border-destructive text-destructive" : "border-border"}`}
                     min={0}
                   />
+                  {selectedAssignment && form.qtyCompleted && Number(form.qtyCompleted) > maxQty && (
+                    <p className="mt-1 text-[10px] text-destructive font-semibold flex items-center gap-1">
+                      <AlertCircle size={10} /> Exceeds remaining scope qty ({maxQty} {selectedAssignment.uom})
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -512,15 +566,23 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
               </div>
             </div>
 
-            {/* Footer */}
             <div className="flex items-center justify-between px-6 py-4 border-t border-border">
-              <button onClick={onClose} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer">Cancel</button>
+              <button onClick={onClose} disabled={submitting} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
               <button
                 onClick={handleSave}
-                disabled={!isValid}
-                className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                disabled={!isValid || submitting}
+                className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5"
               >
-                ✓ Save Progress Log
+                {submitting ? (
+                  <>
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>
+                    <Check size={13} /> Save Progress Log
+                  </>
+                )}
               </button>
             </div>
           </>

@@ -4,12 +4,14 @@ import { useState, useMemo } from "react";
 import {
   CreditCard, CheckCircle2, Clock, Ban,
   Search, Filter, Plus, FileDown, Check, X,
-  DollarSign, Calendar, MapPin
+  DollarSign, Calendar, MapPin, Loader2, Trash2
 } from "lucide-react";
 import useUserStore from "@/store/useUserStore";
 import useContractorStore from "@/store/useContractorStore";
 import useProjectStore from "@/store/useProjectStore";
 import { useCurrency } from "@/store/useSettingsStore";
+import Loader from "@/components/ui/Loader";
+import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
 
 const statusStyles = {
   "Cleared":          "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20",
@@ -32,6 +34,10 @@ export default function SubPaymentsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
   const [showLogModal, setShowLogModal] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
+
+  const loading = useContractorStore((s) => s.loading);
+  const loaded = useContractorStore((s) => s.loaded);
 
   const [form, setForm] = useState({
     subcontractorId: "",
@@ -82,6 +88,14 @@ export default function SubPaymentsPage() {
     });
     setShowLogModal(false);
   };
+
+  if (loading && !loaded && payments.length === 0) {
+    return (
+      <div className="flex items-center justify-center h-full min-h-[400px]">
+        <Loader />
+      </div>
+    );
+  }
 
   return (
     <div className="p-6 min-h-full">
@@ -194,28 +208,32 @@ export default function SubPaymentsPage() {
                         <>
                           <button
                             onClick={() => approvePayment(p.id)}
+                            disabled={loading}
                             title="Approve Payment"
-                            className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer border-none transition-colors"
+                            className="p-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white cursor-pointer border-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
                             <Check size={12} />
                           </button>
                           <button
                             onClick={() => rejectPayment(p.id)}
+                            disabled={loading}
                             title="Reject Payment"
-                            className="p-1 rounded bg-rose-600/10 text-rose-600 hover:bg-rose-600/20 cursor-pointer border-none transition-colors"
+                            className="p-1 rounded bg-rose-600 hover:bg-rose-700 text-white cursor-pointer border-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                           >
-                            <X size={12} />
+                            <Ban size={12} />
                           </button>
                         </>
                       ) : (
-                        <button
-                          onClick={() => deletePayment(p.id)}
-                          title="Delete Record"
-                          className="px-2 py-1 text-[11px] font-bold rounded bg-muted hover:bg-rose-500/10 hover:text-rose-500 text-muted-foreground cursor-pointer border-none transition-colors"
-                        >
-                          Delete
-                        </button>
+                        <span className="text-muted-foreground text-[10px] italic">Processed</span>
                       )}
+                      <button
+                        onClick={() => setDeleteTarget(p)}
+                        disabled={loading}
+                        title="Delete Payment"
+                        className="p-1 rounded bg-destructive/10 text-destructive hover:bg-destructive/20 cursor-pointer border-none transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-1"
+                      >
+                        <Trash2 size={12} />
+                      </button>
                     </div>
                   )}
                 </div>
@@ -223,7 +241,6 @@ export default function SubPaymentsPage() {
             })}
           </div>
         </div>
-
         {filteredPayments.length === 0 && (
           <div className="py-12 text-center text-muted-foreground text-sm">
             No subcontractor payments found matching the criteria.
@@ -231,7 +248,6 @@ export default function SubPaymentsPage() {
         )}
       </div>
 
-      {/* Record Payment Modal */}
       {showLogModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
           <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
@@ -306,17 +322,32 @@ export default function SubPaymentsPage() {
             </div>
 
             <div className="flex items-center justify-between pt-2">
-              <button onClick={() => setShowLogModal(false)} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer">Cancel</button>
+              <button onClick={() => setShowLogModal(false)} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer transition-colors">Cancel</button>
               <button
                 onClick={handleSave}
-                disabled={!form.subcontractorId || !form.amount || !form.project}
-                className="px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                disabled={!form.subcontractorId || !form.amount || !form.project || loading}
+                className="flex items-center gap-1.5 px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
               >
-                ✓ Submit Payment Voucher
+                {loading ? <Loader2 size={13} className="animate-spin" /> : "✓"} 
+                Record Payment
               </button>
             </div>
           </div>
         </div>
+      )}
+
+      {deleteTarget && (
+        <DeleteConfirmModal
+          isOpen={!!deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onConfirm={() => {
+            deletePayment(deleteTarget.id);
+            setDeleteTarget(null);
+          }}
+          title="Delete Sub Payment"
+          description="Are you sure you want to delete this payment record? This action cannot be undone."
+          itemName={`${deleteTarget.subcontractor} - ${currency} ${deleteTarget.amount?.toLocaleString()}`}
+        />
       )}
     </div>
   );

@@ -35,6 +35,7 @@ const useDashboardStore = create((set, get) => ({
     { name: "Tower", workers: 8, assets: 3 },
     { name: "Mall", workers: 6, assets: 2 }
   ],
+  recentActivities: [],
   loading: false,
   loaded: false,
 
@@ -53,7 +54,8 @@ const useDashboardStore = create((set, get) => ({
         monthlyRevenue,
         financialStats,
         resourceDensity,
-        attendanceMarkedToday
+        attendanceMarkedToday,
+        recentActivities
       } = response.data;
 
       set({
@@ -67,6 +69,7 @@ const useDashboardStore = create((set, get) => ({
         financialStats,
         resourceDensity,
         attendanceMarkedToday,
+        recentActivities,
         loaded: true
       });
     } catch (error) {

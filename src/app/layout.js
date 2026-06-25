@@ -20,8 +20,8 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="h-screen flex overflow-hidden">
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <body className="h-screen flex overflow-hidden" suppressHydrationWarning>
         <ThemeProvider>
           <Toaster 
             position="top-right" 

@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import {
   FolderKanban, Users, DollarSign, FileText, ArrowUpRight, ArrowDownRight,
   MapPin, Clock, Zap, Activity, Wrench, UserCheck, BarChart3, CalendarDays,
-  MoreHorizontal, ChevronRight
+  MoreHorizontal, ChevronRight, X, FileDown
 } from "lucide-react";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
@@ -15,25 +15,43 @@ import useProjectStore from "@/store/useProjectStore";
 import useDashboardStore from "@/store/useDashboardStore";
 import Loader from "@/components/ui/Loader";
 import { useCurrency } from "@/store/useSettingsStore";
+import Link from "next/link";
 
 // Static fallback data
-export function getActivities(currency) {
-  return [
-    { type: "worker", icon: UserCheck, iconBgClass: "bg-status-ontrack/10 text-status-ontrack", text: "3 new workers onboarded to Team #5", sub: "Mason × 2, Helper × 1", time: "2h ago" },
-    { type: "alert", icon: Wrench, iconBgClass: "bg-status-atrisk/10 text-status-atrisk", text: "Asset #AST-006 flagged for maintenance", sub: "Vehicle · Overdue", time: "3h ago" },
-    { type: "payment", icon: DollarSign, iconBgClass: "bg-chart-2/10 text-chart-2", text: `Sub payment ${currency} 18,400 approved`, sub: "Mohammad Khalid · PRJ-001", time: "5h ago" },
-    { type: "milestone", icon: Zap, iconBgClass: "bg-status-ontrack/10 text-status-ontrack", text: "Mall Extension passed 80% completion", sub: "Milestone auto-triggered", time: "1d ago" },
-  ];
+export function formatTimeAgo(dateInput) {
+  if (!dateInput) return "just now";
+  const date = new Date(dateInput);
+  const now = new Date();
+  const seconds = Math.floor((now - date) / 1000);
+  
+  if (seconds < 0) return "just now";
+  
+  const intervals = {
+    yr: 31536000,
+    mo: 2592000,
+    wk: 604800,
+    d: 86400,
+    h: 3600,
+    m: 60,
+    s: 1
+  };
+  
+  for (const [key, value] of Object.entries(intervals)) {
+    const count = Math.floor(seconds / value);
+    if (count >= 1) {
+      return `${count}${key} ago`;
+    }
+  }
+  return "just now";
 }
 
-const monthlyRevenue = [
-  { month: "Jan", revenue: 140, cost: 108 },
-  { month: "Feb", revenue: 165, cost: 126 },
-  { month: "Mar", revenue: 155, cost: 120 },
-  { month: "Apr", revenue: 185, cost: 143 },
-  { month: "May", revenue: 172, cost: 131 },
-  { month: "Jun", revenue: 184, cost: 139 },
-];
+const activityConfig = {
+  worker: { icon: UserCheck, iconBgClass: "bg-status-ontrack/10 text-status-ontrack" },
+  alert: { icon: Wrench, iconBgClass: "bg-status-atrisk/10 text-status-atrisk" },
+  payment: { icon: DollarSign, iconBgClass: "bg-chart-2/10 text-chart-2" },
+  progress: { icon: Activity, iconBgClass: "bg-status-ahead/10 text-status-ahead" },
+  milestone: { icon: Zap, iconBgClass: "bg-status-ontrack/10 text-status-ontrack" }
+};
 
 const statusConfig = {
   "On Track": { bgClass: "bg-status-ontrack/10 text-status-ontrack", dotClass: "bg-status-ontrack", color: "var(--status-ontrack)" },
@@ -65,7 +83,8 @@ const CustomTooltip = ({ active, payload, label }) => {
 
 export default function DashboardPage() {
   const currency = useCurrency();
-  const { projects } = useProjectStore();
+  const { projects, fetchProjects } = useProjectStore();
+  const [showFinancialsModal, setShowFinancialsModal] = useState(false);
   const {
     totalWorkforce,
     totalAssets,
@@ -76,13 +95,15 @@ export default function DashboardPage() {
     monthlyRevenue,
     financialStats,
     resourceDensity,
+    recentActivities,
     fetchDashboardData,
     loading
   } = useDashboardStore();
 
   useEffect(() => {
     fetchDashboardData();
-  }, [fetchDashboardData]);
+    fetchProjects();
+  }, [fetchDashboardData, fetchProjects]);
 
   const activeProjects = projects.filter(p => p.status !== "Completed");
   
@@ -111,6 +132,17 @@ export default function DashboardPage() {
     value: healthCount[status],
     fill: statusConfig[status]?.color || "#3b82f6"
   }));
+
+  // Dynamic Financial Data from Projects Module
+  const projectFinancialData = activeProjects.map(p => ({
+    name: p.name.split(" ").slice(0, 2).join(" "),
+    revenue: Number(((p.totalEarned || 0) / 1000).toFixed(2)),
+    cost: Number(((p.totalCost || 0) / 1000).toFixed(2))
+  }));
+
+  const totalRevK = activeProjects.reduce((sum, p) => sum + ((p.totalEarned || 0) / 1000), 0);
+  const totalCostK = activeProjects.reduce((sum, p) => sum + ((p.totalCost || 0) / 1000), 0);
+  const netMarginVal = totalRevK > 0 ? ((totalRevK - totalCostK) / totalRevK * 100).toFixed(1) : "0.0";
 
   if (loading && !totalWorkforce) {
     return <Loader />;
@@ -147,17 +179,20 @@ export default function DashboardPage() {
           <div className="flex justify-between items-start mb-6">
             <div>
               <h2 className="text-[14px] font-bold text-foreground mb-1">Revenue vs Cost</h2>
-              <p className="text-[11.5px] text-muted-foreground">Last 6 months · {currency} thousands</p>
+              <p className="text-[11.5px] text-muted-foreground">By Project · {currency} thousands</p>
             </div>
-            <button className="flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg px-2.5 py-1.5 transition-colors border-none cursor-pointer">
+            <button 
+              onClick={() => setShowFinancialsModal(true)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-primary bg-primary/10 hover:bg-primary/20 rounded-lg px-2.5 py-1.5 transition-colors border-none cursor-pointer"
+            >
               <BarChart3 size={13} /> Full Report
             </button>
           </div>
           <div className="w-full">
             <ResponsiveContainer width="100%" height={260}>
-              <BarChart data={monthlyRevenue} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
+              <BarChart data={projectFinancialData} margin={{ top: 0, right: 10, left: -20, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--border)" />
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
+                <XAxis dataKey="name" tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: "var(--muted-foreground)" }} axisLine={false} tickLine={false} />
                 <RechartsTooltip content={<CustomTooltip />} />
                 <Legend iconType="circle" wrapperStyle={{ fontSize: "11.5px", paddingTop: "10px" }} />
@@ -168,9 +203,9 @@ export default function DashboardPage() {
           </div>
           <div className="grid grid-cols-3 gap-3 mt-6 pt-5 border-t border-border">
             {[
-              { label: "Gross Revenue", value: financialStats.grossRevenueVal ? `${currency} ${financialStats.grossRevenueVal}K` : financialStats.grossRevenue, colorClass: "text-chart-1 font-extrabold" },
-              { label: "Total Cost",    value: financialStats.totalCostVal ? `${currency} ${financialStats.totalCostVal}K` : financialStats.totalCost,   colorClass: "text-chart-2 font-extrabold" },
-              { label: "Net Margin",    value: financialStats.netMargin,      colorClass: "text-status-ontrack font-extrabold" },
+              { label: "Gross Revenue", value: `${currency} ${totalRevK.toFixed(2)}K`, colorClass: "text-chart-1 font-extrabold" },
+              { label: "Total Cost",    value: `${currency} ${totalCostK.toFixed(2)}K`, colorClass: "text-chart-2 font-extrabold" },
+              { label: "Net Margin",    value: `${netMarginVal}%`, colorClass: "text-status-ontrack font-extrabold" },
             ].map((m) => (
               <div key={m.label}>
                 <p className="text-[11.5px] text-muted-foreground mb-0.5">{m.label}</p>
@@ -305,9 +340,12 @@ export default function DashboardPage() {
               <h2 className="text-[14px] font-bold text-foreground">Project Pipeline</h2>
               <p className="text-[11.5px] text-muted-foreground mt-0.5">{activeProjects.length} active projects</p>
             </div>
-            <button className="flex items-center gap-1 text-xs font-semibold text-primary bg-transparent border-none cursor-pointer hover:underline">
+            <Link 
+              href="/projects" 
+              className="flex items-center gap-1 text-xs font-semibold text-primary bg-transparent border-none cursor-pointer hover:underline"
+            >
               View All <ChevronRight size={13} />
-            </button>
+            </Link>
           </div>
           <div className="overflow-x-auto">
             <div className="min-w-[600px]">
@@ -324,7 +362,9 @@ export default function DashboardPage() {
                 return (
                   <div key={p.id} className={`grid grid-cols-[2fr_1.2fr_1.5fr_1.2fr] px-5 py-3.5 items-center hover:bg-muted/30 ${i < activeProjects.length - 1 ? 'border-b border-border/50' : ''}`}>
                     <div>
-                      <p className="text-[13.5px] font-semibold text-foreground">{p.name}</p>
+                      <Link href={`/projects/${p.id}`} className="hover:underline">
+                        <p className="text-[13.5px] font-semibold text-foreground hover:text-primary transition-colors">{p.name}</p>
+                      </Link>
                       <p className="text-[11px] text-muted-foreground flex items-center gap-1 mt-1"><MapPin size={9} /> {p.client} · {p.location}</p>
                     </div>
                     <div className="pr-4">
@@ -360,28 +400,152 @@ export default function DashboardPage() {
             <button className="text-muted-foreground hover:bg-muted p-0.5 border-none cursor-pointer rounded-sm"><MoreHorizontal size={16} /></button>
           </div>
           <div className="flex flex-col gap-1">
-            {getActivities(currency).map((a, i, arr) => {
-              const Icon = a.icon;
+            {(recentActivities || []).map((a, i, arr) => {
+              const cfg = activityConfig[a.type] || activityConfig.worker;
+              const Icon = cfg.icon;
               return (
                 <div key={i} className="flex gap-3 p-2 rounded-lg hover:bg-muted/40 items-start">
                   <div className="flex flex-col items-center">
-                    <div className={`w-7.5 h-7.5 rounded-lg flex items-center justify-center ${a.iconBgClass}`}><Icon size={13} /></div>
+                    <div className={`w-7.5 h-7.5 rounded-lg flex items-center justify-center ${cfg.iconBgClass}`}><Icon size={13} /></div>
                     {i < arr.length - 1 && <div className="w-px h-6 bg-border mt-1" />}
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className="text-[12.5px] font-semibold text-foreground leading-snug">{a.text}</p>
                     <p className="text-[11px] text-muted-foreground mt-0.5">{a.sub}</p>
-                    <p className="text-[10.5px] text-muted-foreground/60 mt-1 flex items-center gap-1"><Clock size={9} /> {a.time}</p>
+                    <p className="text-[10px] text-muted-foreground/60 mt-1 flex items-center gap-1"><Clock size={9} /> {formatTimeAgo(a.timestamp)}</p>
                   </div>
                 </div>
               );
             })}
           </div>
-          <button className="w-full mt-3 py-2.5 rounded-lg bg-muted/50 border border-border text-xs font-semibold text-muted-foreground flex justify-center cursor-pointer gap-1 hover:bg-muted hover:text-foreground">
+          <Link
+            href="/daily-progress"
+            className="w-full mt-3 py-2.5 rounded-lg bg-muted/50 border border-border text-xs font-semibold text-muted-foreground flex justify-center items-center cursor-pointer gap-1 hover:bg-muted hover:text-foreground transition-colors"
+          >
             View full log <ChevronRight size={13} />
-          </button>
+          </Link>
         </div>
       </div>
+
+      {/* ── Financial Portfolio Report Modal ── */}
+      {showFinancialsModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowFinancialsModal(false)} />
+          <div className="relative bg-card border border-border rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-y-auto flex flex-col z-10 animate-scale-in">
+            {/* Header */}
+            <div className="sticky top-0 bg-card/95 backdrop-blur-xs border-b border-border px-6 py-4 flex items-center justify-between z-20">
+              <div>
+                <h2 className="font-bold text-foreground text-base">Project Financial Portfolio</h2>
+                <p className="text-xs text-muted-foreground mt-0.5">Comprehensive revenue, cost, and margin summary by project</p>
+              </div>
+              <button 
+                onClick={() => setShowFinancialsModal(false)} 
+                className="p-2 rounded-lg hover:bg-muted transition-colors border-none bg-transparent cursor-pointer outline-none"
+              >
+                <X size={16} className="text-muted-foreground" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="p-6 space-y-6">
+              {/* Summary KPIs */}
+              <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                {[
+                  { label: "Portfolio Revenue", value: `${currency} ${(totalRevK * 1000).toLocaleString("en-US", { maximumFractionDigits: 0 })}`, color: "text-status-ontrack bg-status-ontrack/10" },
+                  { label: "Portfolio Cost", value: `${currency} ${(totalCostK * 1000).toLocaleString("en-US", { maximumFractionDigits: 0 })}`, color: "text-chart-2 bg-chart-2/10" },
+                  { label: "Net Margin", value: `${currency} ${((totalRevK - totalCostK) * 1000).toLocaleString("en-US", { maximumFractionDigits: 0 })}`, color: "text-primary bg-primary/10" },
+                  { label: "Avg Margin %", value: `${netMarginVal}%`, color: "text-status-ahead bg-status-ahead/10" },
+                ].map((s, idx) => (
+                  <div key={idx} className="bg-muted/40 border border-border rounded-xl p-4 shadow-2xs">
+                    <p className="text-[11px] font-bold text-muted-foreground/85 uppercase tracking-wider mb-1">{s.label}</p>
+                    <p className="text-xl font-black text-foreground tracking-tight">{s.value}</p>
+                  </div>
+                ))}
+              </div>
+
+              {/* Table */}
+              <div className="border border-border rounded-xl overflow-hidden bg-card shadow-2xs">
+                <div className="overflow-x-auto">
+                  <table className="w-full border-collapse text-left text-xs">
+                    <thead>
+                      <tr className="bg-muted/50 border-b border-border text-[10px] font-bold text-muted-foreground uppercase tracking-wider select-none">
+                        <th className="px-4 py-3.5">Project Name</th>
+                        <th className="px-4 py-3.5">Status</th>
+                        <th className="px-4 py-3.5 text-right">Gross Revenue</th>
+                        <th className="px-4 py-3.5 text-right">Total Cost</th>
+                        <th className="px-4 py-3.5 text-right">Net Profit</th>
+                        <th className="px-4 py-3.5 text-right">Margin (%)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {activeProjects.map((p) => {
+                        const rev = p.totalEarned || 0;
+                        const cost = p.totalCost || 0;
+                        const profit = rev - cost;
+                        const margin = rev > 0 ? (profit / rev * 100).toFixed(1) : "0.0";
+                        const sc = statusConfig[p.status] || { bgClass: "bg-muted text-muted-foreground", dotClass: "bg-muted-foreground" };
+                        return (
+                          <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                            <td className="px-4 py-3 font-semibold text-foreground">{p.name}</td>
+                            <td className="px-4 py-3">
+                              <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${sc.bgClass}`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${sc.dotClass}`} />{p.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-foreground">{currency} {rev.toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                            <td className="px-4 py-3 text-right font-mono font-medium text-chart-2">{currency} {cost.toLocaleString("en-US", { maximumFractionDigits: 0 })}</td>
+                            <td className={`px-4 py-3 text-right font-mono font-bold ${profit >= 0 ? "text-status-ontrack" : "text-status-atrisk"}`}>
+                              {profit < 0 ? "-" : ""}{currency} {Math.abs(profit).toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                            </td>
+                            <td className={`px-4 py-3 text-right font-mono font-bold ${profit >= 0 ? "text-status-ontrack" : "text-status-atrisk"}`}>
+                              {margin}%
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+            
+            {/* Footer */}
+            <div className="sticky bottom-0 bg-card border-t border-border px-6 py-4 flex justify-between z-20">
+              <button
+                onClick={() => {
+                  const headers = ["Project Name", "Status", "Gross Revenue (SAR)", "Total Cost (SAR)", "Net Profit (SAR)", "Margin (%)"];
+                  const rows = activeProjects.map((p) => {
+                    const rev = p.totalEarned || 0;
+                    const cost = p.totalCost || 0;
+                    const profit = rev - cost;
+                    const margin = rev > 0 ? (profit / rev * 100).toFixed(1) : "0.0";
+                    return [p.name, p.status, rev, cost, profit, `${margin}%`];
+                  });
+                  const csvContent = [headers.join(","), ...rows.map(e => e.map(val => `"${val}"`).join(","))].join("\n");
+                  const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+                  const url = URL.createObjectURL(blob);
+                  const link = document.createElement("a");
+                  link.setAttribute("href", url);
+                  link.setAttribute("download", `Project_Financial_Report_${new Date().toISOString().split("T")[0]}.csv`);
+                  link.style.visibility = "hidden";
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-muted hover:bg-muted/80 text-foreground text-xs font-semibold transition-all border border-border cursor-pointer"
+              >
+                <FileDown size={14} /> Export CSV
+              </button>
+              <button
+                onClick={() => setShowFinancialsModal(false)}
+                className="px-4 py-2 rounded-xl bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 transition-opacity cursor-pointer border-none"
+              >
+                Close Report
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

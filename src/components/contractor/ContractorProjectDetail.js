@@ -5,7 +5,7 @@ import {
   ArrowLeft, Building2, MapPin, DollarSign, CheckCircle2,
   CreditCard, ShieldAlert, Layers, ChevronDown, ChevronUp,
   FileText, Activity, TrendingDown, Plus, X, Star,
-  Clock, Target, Hash, BarChart3
+  Clock, Target, Hash, BarChart3, AlertCircle
 } from "lucide-react";
 import useContractorStore from "@/store/useContractorStore";
 import useAssignmentStore from "@/store/useAssignmentStore";
@@ -63,6 +63,7 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
+  const [submittingProgress, setSubmittingProgress] = useState(false);
 
   const [deductionForm, setDeductionForm] = useState({
     site: projectGroup.project?.name || "", amount: "", category: "Material Damage",
@@ -137,28 +138,44 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
     setShowPaymentModal(false);
   };
 
-  const handleAddProgress = () => {
-    if (!progressForm.assignmentId || !progressForm.qtyCompleted) return;
+  const handleAddProgress = async () => {
+    if (!progressForm.assignmentId || !progressForm.qtyCompleted || submittingProgress) return;
     const asn = enrichedScopes.find((a) => a.id === progressForm.assignmentId);
     if (!asn) return;
-    addLog({
-      projectId: projectGroup.projectId,
-      assignmentId: progressForm.assignmentId,
-      unitId: progressForm.unitId || null,
-      phaseId: progressForm.phaseId || null,
-      scopeName: asn.scopeName,
-      uom: asn.uom,
-      date: new Date().toISOString().split("T")[0],
-      qtyCompleted: Number(progressForm.qtyCompleted),
-      rate: asn.subRate,
-      assigneeType: "contractor",
-      assigneeName: contractor.name,
-      notes: progressForm.notes,
-      signedBy: progressForm.signedBy || "Site Engineer",
-      status: "Under Review",
-    });
-    setProgressForm({ assignmentId: "", unitId: "", phaseId: "", qtyCompleted: "", notes: "", signedBy: "" });
-    setShowProgressModal(false);
+    setSubmittingProgress(true);
+    try {
+      await addLog({
+        projectId: projectGroup.projectId,
+        assignmentId: progressForm.assignmentId,
+        unitId: progressForm.unitId || null,
+        phaseId: progressForm.phaseId || null,
+        scopeName: asn.scopeName,
+        uom: asn.uom,
+        date: new Date().toISOString().split("T")[0],
+        qtyCompleted: Number(progressForm.qtyCompleted),
+        rate: asn.subRate,
+        assigneeType: "contractor",
+        assigneeName: contractor.name,
+        notes: progressForm.notes,
+        signedBy: progressForm.signedBy || "Site Engineer",
+        status: "Under Review",
+      });
+
+      // Optimistic update on the assignment breakdown in local store
+      useAssignmentStore.getState().applyProgressOptimistic(
+        progressForm.assignmentId,
+        progressForm.unitId || null,
+        progressForm.phaseId || null,
+        Number(progressForm.qtyCompleted)
+      );
+
+      setProgressForm({ assignmentId: "", unitId: "", phaseId: "", qtyCompleted: "", notes: "", signedBy: "" });
+      setShowProgressModal(false);
+    } catch (err) {
+      // Handled by store/toast
+    } finally {
+      setSubmittingProgress(false);
+    }
   };
 
   const tabs = [
@@ -170,6 +187,54 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
   ];
 
   const selectedAsnForProgress = enrichedScopes.find((a) => a.id === progressForm.assignmentId);
+
+  const maxAllowedQty = useMemo(() => {
+    if (!selectedAsnForProgress) return Infinity;
+    if (selectedAsnForProgress.level === "unit") {
+      if (!progressForm.unitId) return 0;
+      const u = (selectedAsnForProgress.unitBreakdown || []).find((u) => u.unitId === progressForm.unitId);
+      return u ? Math.max(0, (u.qty || 0) - (u.done || 0)) : 0;
+    }
+    if (selectedAsnForProgress.level === "phase") {
+      if (!progressForm.phaseId) return 0;
+      const p = (selectedAsnForProgress.phaseBreakdown || []).find((p) => p.phaseId === progressForm.phaseId);
+      return p ? Math.max(0, (p.qty || 0) - (p.done || 0)) : 0;
+    }
+    // project level
+    return Math.max(0, (selectedAsnForProgress.totalQty || 0) - (selectedAsnForProgress.doneQty || 0));
+  }, [selectedAsnForProgress, progressForm.unitId, progressForm.phaseId]);
+
+  const selectedScopeStats = useMemo(() => {
+    if (!selectedAsnForProgress) return null;
+    let target = 0;
+    let done = 0;
+
+    if (selectedAsnForProgress.level === "unit") {
+      if (progressForm.unitId) {
+        const u = (selectedAsnForProgress.unitBreakdown || []).find((u) => u.unitId === progressForm.unitId);
+        if (u) {
+          target = Number(u.qty || 0);
+          done = Number(u.done || 0);
+        }
+      }
+    } else if (selectedAsnForProgress.level === "phase") {
+      if (progressForm.phaseId) {
+        const p = (selectedAsnForProgress.phaseBreakdown || []).find((p) => p.phaseId === progressForm.phaseId);
+        if (p) {
+          target = Number(p.qty || 0);
+          done = Number(p.done || 0);
+        }
+      }
+    } else {
+      // project level
+      target = Number(selectedAsnForProgress.totalQty || 0);
+      done = Number(selectedAsnForProgress.doneQty || 0);
+    }
+
+    const remaining = Math.max(0, target - done);
+    const percent = target > 0 ? Math.min(100, Math.round((done / target) * 100)) : 0;
+    return { target, done, remaining, percent };
+  }, [selectedAsnForProgress, progressForm.unitId, progressForm.phaseId]);
 
   return (
     <div className="p-6 space-y-5 min-h-full animate-in fade-in duration-200">
@@ -886,12 +951,15 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
       {/* ── Modal: Add Progress ── */}
       {showProgressModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-md">
-          <div className="bg-card border border-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between">
+          <div className="bg-card border border-border rounded-2xl w-full max-w-md shadow-2xl flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
               <h3 className="text-sm font-bold text-foreground">Add Progress Entry</h3>
-              <button onClick={() => setShowProgressModal(false)} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground cursor-pointer"><X size={15} /></button>
+              <button onClick={() => setShowProgressModal(false)} disabled={submittingProgress} className="p-1.5 rounded-lg hover:bg-muted text-muted-foreground cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed transition-colors"><X size={15} /></button>
             </div>
-            <div className="space-y-3">
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              <div className="space-y-3">
               <div>
                 <label className="text-[10px] uppercase font-bold text-muted-foreground">Scope Assignment *</label>
                 <select value={progressForm.assignmentId}
@@ -926,14 +994,87 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                   </select>
                 </div>
               )}
+
+              {/* Guiding Placeholders for selections */}
+              {selectedAsnForProgress?.level === "unit" && !progressForm.unitId && (
+                <p className="text-[10px] text-muted-foreground text-center italic bg-muted/20 py-2 rounded-lg border border-dashed border-border/60">
+                  Please select a unit to view remaining quantities.
+                </p>
+              )}
+              {selectedAsnForProgress?.level === "phase" && !progressForm.phaseId && (
+                <p className="text-[10px] text-muted-foreground text-center italic bg-muted/20 py-2 rounded-lg border border-dashed border-border/60">
+                  Please select a phase to view remaining quantities.
+                </p>
+              )}
+
+              {/* Scope Stats Panel */}
+              {selectedScopeStats && selectedScopeStats.target > 0 && (
+                <div className="bg-muted/40 border border-border/60 rounded-xl p-3.5 space-y-2.5 animate-in fade-in duration-200">
+                  <div className="flex justify-between items-center text-[10px] uppercase font-bold text-muted-foreground">
+                    <span>Scope Target & Progress</span>
+                    <span className="text-foreground font-black">
+                      {selectedAsnForProgress.level} Level
+                    </span>
+                  </div>
+
+                  {/* Metric Grid */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="bg-card border border-border/40 p-1.5 rounded-lg">
+                      <p className="text-[8px] uppercase font-bold text-muted-foreground">Target Qty</p>
+                      <p className="text-xs font-black text-foreground mt-0.5">
+                        {selectedScopeStats.target} <span className="text-[9px] font-semibold text-muted-foreground">{selectedAsnForProgress.uom}</span>
+                      </p>
+                    </div>
+                    <div className="bg-card border border-border/40 p-1.5 rounded-lg">
+                      <p className="text-[8px] uppercase font-bold text-muted-foreground">Prev Done</p>
+                      <p className="text-xs font-black text-emerald-600 dark:text-emerald-400 mt-0.5">
+                        {selectedScopeStats.done} <span className="text-[9px] font-semibold text-muted-foreground">{selectedAsnForProgress.uom}</span>
+                      </p>
+                    </div>
+                    <div className="bg-card border border-border/40 p-1.5 rounded-lg">
+                      <p className="text-[8px] uppercase font-bold text-muted-foreground">Remaining</p>
+                      <p className="text-xs font-black text-primary mt-0.5">
+                        {selectedScopeStats.remaining} <span className="text-[9px] font-semibold text-muted-foreground">{selectedAsnForProgress.uom}</span>
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Progress bar */}
+                  <div className="space-y-1">
+                    <div className="flex justify-between text-[9px] font-bold text-muted-foreground">
+                      <span>Completion Ratio</span>
+                      <span className="text-foreground font-black">{selectedScopeStats.percent}%</span>
+                    </div>
+                    <div className="h-1 bg-muted rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-emerald-500 rounded-full transition-all duration-700"
+                        style={{ width: `${selectedScopeStats.percent}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground">
-                    Qty Completed ({selectedAsnForProgress?.uom || "units"}) *
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground flex items-center justify-between">
+                    <span>Qty Completed ({selectedAsnForProgress?.uom || "units"}) *</span>
+                    {selectedAsnForProgress && (
+                      <span className="text-[9.5px] text-primary lowercase font-semibold">
+                        (max: {maxAllowedQty})
+                      </span>
+                    )}
                   </label>
                   <input type="number" value={progressForm.qtyCompleted}
                     onChange={(e) => setProgressForm({ ...progressForm, qtyCompleted: e.target.value })}
-                    placeholder="0" className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-xl border border-border outline-none font-bold" />
+                    placeholder="0"
+                    className={`block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-xl border outline-none font-bold
+                      ${progressForm.qtyCompleted && Number(progressForm.qtyCompleted) > maxAllowedQty ? "border-destructive text-destructive" : "border-border"}`} />
+                  {selectedAsnForProgress && progressForm.qtyCompleted && Number(progressForm.qtyCompleted) > maxAllowedQty && (
+                    <p className="mt-1 text-[10px] text-destructive font-semibold flex items-center gap-1">
+                      <AlertCircle size={10} /> Exceeds remaining qty ({maxAllowedQty} {selectedAsnForProgress.uom})
+                    </p>
+                  )}
                 </div>
                 <div>
                   <label className="text-[10px] uppercase font-bold text-muted-foreground">Signed By</label>
@@ -947,17 +1088,38 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
                   placeholder="Optional notes..." className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-xl border border-border outline-none resize-none" />
               </div>
               {progressForm.qtyCompleted && selectedAsnForProgress && (
-                <div className="p-2.5 bg-emerald-500/5 rounded-xl border border-emerald-500/20 text-xs">
-                  <span className="text-muted-foreground">Amount Earned: </span>
-                  <span className="font-black text-emerald-600">{currency} {formatNumber(Number(progressForm.qtyCompleted) * (selectedAsnForProgress.subRate || 0))}</span>
+                <div className="p-2.5 bg-emerald-500/5 rounded-xl border border-emerald-500/20 text-xs flex justify-between items-center">
+                  <div>
+                    <span className="text-muted-foreground">Amount Earned: </span>
+                    <span className="font-black text-emerald-600">{currency} {formatNumber(Number(progressForm.qtyCompleted) * (selectedAsnForProgress.subRate || 0))}</span>
+                  </div>
+                  <div className="text-[10px] text-muted-foreground font-semibold">
+                    Rate: {currency} {selectedAsnForProgress.subRate} / {selectedAsnForProgress.uom}
+                  </div>
                 </div>
               )}
+              </div>
             </div>
-            <div className="flex justify-between pt-2">
-              <button onClick={() => setShowProgressModal(false)} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer">Cancel</button>
-              <button onClick={handleAddProgress} disabled={!progressForm.assignmentId || !progressForm.qtyCompleted}
-                className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-40 cursor-pointer transition-all">
-                ✓ Add Progress
+            {/* Footer */}
+            <div className="flex justify-between px-6 py-4 border-t border-border shrink-0">
+              <button onClick={() => setShowProgressModal(false)} disabled={submittingProgress} className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed">Cancel</button>
+              <button onClick={handleAddProgress} 
+                disabled={
+                  !progressForm.assignmentId || 
+                  !progressForm.qtyCompleted || 
+                  Number(progressForm.qtyCompleted) <= 0 || 
+                  Number(progressForm.qtyCompleted) > maxAllowedQty ||
+                  submittingProgress
+                }
+                className="px-5 py-2 text-xs font-bold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5">
+                {submittingProgress ? (
+                  <>
+                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Saving...</span>
+                  </>
+                ) : (
+                  <>✓ Add Progress</>
+                )}
               </button>
             </div>
           </div>

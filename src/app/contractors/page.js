@@ -4,6 +4,8 @@ import { useState, useEffect } from "react";
 import { X, Plus } from "lucide-react";
 import useContractorStore from "@/store/useContractorStore";
 import useProjectStore from "@/store/useProjectStore";
+import useAssignmentStore from "@/store/useAssignmentStore";
+import useProgressStore from "@/store/useProgressStore";
 import ContractorDirectory from "@/components/contractor/ContractorDirectory";
 import ContractorProjectsPanel from "@/components/contractor/ContractorProjectsPanel";
 import ContractorProjectDetail from "@/components/contractor/ContractorProjectDetail";
@@ -26,12 +28,18 @@ export default function ContractorsPage() {
     loaded
   } = useContractorStore();
   const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
+  const fetchAssignments = useAssignmentStore((s) => s.fetchAssignments);
+  const fetchLogs = useProgressStore((s) => s.fetchLogs);
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
 
   useEffect(() => {
     fetchContractorData();
-  }, [fetchContractorData]);
+    fetchProjects(true);
+    fetchAssignments(null, true);
+    fetchLogs(null, true);
+  }, [fetchContractorData, fetchProjects, fetchAssignments, fetchLogs]);
 
   useEffect(() => {
     if (typeof window !== "undefined" && contractors.length > 0) {

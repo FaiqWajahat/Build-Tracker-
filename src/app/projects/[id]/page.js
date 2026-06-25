@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import {
@@ -43,9 +43,22 @@ export default function ProjectDetailPage() {
   const currency = useCurrency();
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
+
+  const fetchProjects    = useProjectStore((s) => s.fetchProjects);
+  const fetchAssignments = useAssignmentStore((s) => s.fetchAssignments);
+  const fetchLogs        = useProgressStore((s) => s.fetchLogs);
+  const projectsLoaded   = useProjectStore((s) => s.loaded);
+
   const project        = useProjectStore((s) => s.projects.find((p) => p.id === id));
   const allAssignments = useAssignmentStore((s) => s.assignments);
   const allLogs        = useProgressStore((s) => s.logs);
+
+  // Fetch data on mount
+  useEffect(() => {
+    fetchProjects();
+    fetchAssignments(id);
+    fetchLogs(id);
+  }, [id, fetchProjects, fetchAssignments, fetchLogs]);
 
   const assignments = useMemo(() => allAssignments.filter((a) => a.projectId === id), [allAssignments, id]);
   const logs        = useMemo(() => allLogs.filter((l) => l.projectId === id),        [allLogs, id]);
@@ -81,6 +94,15 @@ export default function ProjectDetailPage() {
   }, [assignments, logs, project]);
 
   const sc = statusColor(overallProgress);
+
+  /* ── Loading state ── */
+  if (!project && !projectsLoaded) {
+    return (
+      <div className="p-8 flex items-center justify-center min-h-[400px]">
+        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   /* ── Not found ── */
   if (!project) {
