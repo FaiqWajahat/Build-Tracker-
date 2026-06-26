@@ -195,6 +195,7 @@ export async function POST(request) {
       pm,
       type,
       subtype,
+      status,
       startDate,
       endDate,
       phases = [],
@@ -209,8 +210,8 @@ export async function POST(request) {
 
     // 1. Insert project
     const projectRes = await dbClient.query(
-      `INSERT INTO projects (name, client, location, pm, type, subtype, start_date, end_date)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO projects (name, client, location, pm, type, subtype, status, start_date, end_date)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
        RETURNING *`,
       [
         name,
@@ -219,6 +220,7 @@ export async function POST(request) {
         pm || null,
         type || null,
         subtype || null,
+        status || 'On Track',
         startDate || null,
         endDate || null,
       ]

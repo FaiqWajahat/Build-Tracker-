@@ -16,6 +16,7 @@ import useDashboardStore from "@/store/useDashboardStore";
 import Loader from "@/components/ui/Loader";
 import { useCurrency } from "@/store/useSettingsStore";
 import Link from "next/link";
+import { computeProjectStatus, PROJECT_STATUS_CONFIG } from "@/lib/projectStatus";
 
 // Static fallback data
 export function formatTimeAgo(dateInput) {
@@ -53,11 +54,13 @@ const activityConfig = {
   milestone: { icon: Zap, iconBgClass: "bg-status-ontrack/10 text-status-ontrack" }
 };
 
+// Re-export for local use — colors keyed by auto-computed status
 const statusConfig = {
-  "On Track": { bgClass: "bg-status-ontrack/10 text-status-ontrack", dotClass: "bg-status-ontrack", color: "var(--status-ontrack)" },
-  "Ahead":    { bgClass: "bg-status-ahead/10 text-status-ahead", dotClass: "bg-status-ahead", color: "var(--status-ahead)" },
-  "Delayed":  { bgClass: "bg-status-delayed/10 text-status-delayed", dotClass: "bg-status-delayed", color: "var(--status-delayed)" },
-  "At Risk":  { bgClass: "bg-status-atrisk/10 text-status-atrisk", dotClass: "bg-status-atrisk", color: "var(--status-atrisk)" },
+  "On Track":  { bgClass: "bg-status-ontrack/10 text-status-ontrack",  dotClass: "bg-status-ontrack",  color: "var(--status-ontrack)"  },
+  "Ahead":     { bgClass: "bg-status-ahead/10 text-status-ahead",      dotClass: "bg-status-ahead",    color: "var(--status-ahead)"    },
+  "Delayed":   { bgClass: "bg-status-delayed/10 text-status-delayed",  dotClass: "bg-status-delayed",  color: "var(--status-delayed)"  },
+  "At Risk":   { bgClass: "bg-status-atrisk/10 text-status-atrisk",    dotClass: "bg-status-atrisk",   color: "var(--status-atrisk)"   },
+  "Completed": { bgClass: "bg-emerald-500/10 text-emerald-600",         dotClass: "bg-emerald-500",     color: "#10b981"                },
 };
 
 const progressColorClass = (p) => p >= 80 ? "bg-status-ontrack" : p >= 50 ? "bg-status-ahead" : p >= 30 ? "bg-status-delayed" : "bg-status-atrisk";
@@ -105,8 +108,14 @@ export default function DashboardPage() {
     fetchProjects();
   }, [fetchDashboardData, fetchProjects]);
 
-  const activeProjects = projects.filter(p => p.status !== "Completed");
-  
+  // Auto-compute status from dates + progress for every project
+  const projectsWithStatus = projects.map(p => ({
+    ...p,
+    computedStatus: computeProjectStatus(p)
+  }));
+
+  const activeProjects = projectsWithStatus.filter(p => p.computedStatus !== "Completed");
+
   // KPIs
   const kpis = [
     { label: "Active Projects", value: activeProjects.length.toString(), change: "+1", changeLabel: "this month", up: true, icon: FolderKanban, iconClass: "text-status-ahead bg-status-ahead/10", changeClass: "bg-status-ontrack/10 text-status-ontrack" },
@@ -115,16 +124,16 @@ export default function DashboardPage() {
     { label: "Pending Invoices", value: pendingInvoicesCount.toString(), change: `${currency} ${(pendingInvoicesAmount / 1000).toFixed(1)}K`, changeLabel: "outstanding", up: false, icon: FileText, iconClass: "text-status-delayed bg-status-delayed/10", changeClass: "bg-status-delayed/10 text-status-delayed" },
   ];
 
-  // Chart 1: Project Progress Portfolio
+  // Chart 1: Project Progress Portfolio (color by auto-computed status)
   const projectProgressData = activeProjects.map(p => ({
-    name: p.name.split(" ")[0] + " " + (p.name.split(" ")[1] || ""),
+    name: (p.name || "").split(" ")[0] + " " + ((p.name || "").split(" ")[1] || ""),
     progress: p.progress,
-    fill: statusConfig[p.status]?.color || "#3b82f6"
+    fill: statusConfig[p.computedStatus]?.color || "#3b82f6"
   }));
 
-  // Chart 2: Project Health Distribution
+  // Chart 2: Project Health Distribution (driven by auto-computed status)
   const healthCount = activeProjects.reduce((acc, p) => {
-    acc[p.status] = (acc[p.status] || 0) + 1;
+    acc[p.computedStatus] = (acc[p.computedStatus] || 0) + 1;
     return acc;
   }, {});
   const healthData = Object.keys(healthCount).map(status => ({
@@ -135,7 +144,7 @@ export default function DashboardPage() {
 
   // Dynamic Financial Data from Projects Module
   const projectFinancialData = activeProjects.map(p => ({
-    name: p.name.split(" ").slice(0, 2).join(" "),
+    name: (p.name || "").split(" ").slice(0, 2).join(" "),
     revenue: Number(((p.totalEarned || 0) / 1000).toFixed(2)),
     cost: Number(((p.totalCost || 0) / 1000).toFixed(2))
   }));
@@ -380,9 +389,9 @@ export default function DashboardPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white" style={{ background: sc.color }}>
-                        {p.pm.split(" ").map(x => x[0]).join("").slice(0, 2)}
+                        {p.pm ? p.pm.split(" ").map(x => x[0]).join("").slice(0, 2) : "??"}
                       </div>
-                      <span className="text-[12.5px] font-medium">{p.pm}</span>
+                      <span className="text-[12.5px] font-medium">{p.pm || "No PM"}</span>
                     </div>
                   </div>
                 );

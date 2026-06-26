@@ -16,6 +16,7 @@ import useProgressStore from "@/store/useProgressStore";
 import { PROJECT_TYPES } from "@/components/projects/ProjectTypeConfig";
 import useUserStore from "@/store/useUserStore";
 import { useCurrency } from "@/store/useSettingsStore";
+import { computeProjectStatus, PROJECT_STATUS_CONFIG } from "@/lib/projectStatus";
 
 import OverviewTab       from "@/components/project-detail/OverviewTab";
 import AssignmentsTab    from "@/components/project-detail/AssignmentsTab";
@@ -27,11 +28,13 @@ import DailyLogModal     from "@/components/project-detail/DailyLogModal";
 
 const pct = (done, total) => (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
 
-const statusColor = (p) => {
-  if (p >= 100) return { bar: "bg-emerald-500", badge: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400", dot: "bg-emerald-500", label: "Completed" };
-  if (p >= 75)  return { bar: "bg-blue-500",    badge: "bg-blue-500/10 text-blue-600 dark:text-blue-400",           dot: "bg-blue-500",   label: "On Track" };
-  if (p >= 40)  return { bar: "bg-amber-500",   badge: "bg-amber-500/10 text-amber-600 dark:text-amber-400",       dot: "bg-amber-500",  label: "Ongoing" };
-  return          { bar: "bg-rose-500",          badge: "bg-rose-500/10 text-rose-600 dark:text-rose-400",          dot: "bg-rose-500",   label: "Behind" };
+/** Maps a computedStatus string to progress bar and badge classes */
+const statusToBar = {
+  "On Track":  "bg-blue-500",
+  "Ahead":     "bg-status-ahead",
+  "Delayed":   "bg-status-delayed",
+  "At Risk":   "bg-status-atrisk",
+  "Completed": "bg-emerald-500",
 };
 
 function typeIcon(typeVal) {
@@ -93,7 +96,11 @@ export default function ProjectDetailPage() {
     };
   }, [assignments, logs, project]);
 
-  const sc = statusColor(overallProgress);
+  // Auto-compute project status from start/end dates + actual progress
+  const computedStatus = project ? computeProjectStatus({ ...project, progress: overallProgress }) : "On Track";
+  const sc = PROJECT_STATUS_CONFIG[computedStatus] || PROJECT_STATUS_CONFIG["On Track"];
+  // Progress bar color derived from computed status
+  const barColor = statusToBar[computedStatus] || "bg-blue-500";
 
   /* ── Loading state ── */
   if (!project && !projectsLoaded) {
@@ -158,7 +165,7 @@ export default function ProjectDetailPage() {
       <div className="bg-card border border-border rounded-xl overflow-hidden shadow-sm">
         {/* Progress stripe at top */}
         <div className="h-1.5 bg-muted w-full">
-          <div className={`h-full ${sc.bar} transition-all duration-700`} style={{ width: `${overallProgress}%` }} />
+          <div className={`h-full ${barColor} transition-all duration-700`} style={{ width: `${overallProgress}%` }} />
         </div>
 
         <div className="p-5">
@@ -175,9 +182,9 @@ export default function ProjectDetailPage() {
                       <span className="text-[10px] uppercase font-semibold text-muted-foreground">{project.subtype}</span>
                     </>
                   )}
-                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${sc.badge}`}>
+                  <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${sc.bg} ${sc.text} ${sc.border}`}>
                     <span className={`w-1.5 h-1.5 rounded-full ${sc.dot}`} />
-                    {overallProgress >= 100 ? "Completed" : project.status}
+                    {computedStatus}
                   </span>
                 </div>
                 <h1 className="text-xl font-extrabold text-foreground tracking-tight mt-1">{project.name}</h1>
@@ -213,10 +220,10 @@ export default function ProjectDetailPage() {
             <div className="flex-1 max-w-lg">
               <div className="flex justify-between text-xs mb-1.5 font-semibold">
                 <span className="text-muted-foreground">Overall Scope Completion</span>
-                <span className={`font-black ${sc.badge.split(" ").slice(1).join(" ")}`}>{overallProgress}%</span>
+                <span className={`font-black ${sc.text}`}>{overallProgress}%</span>
               </div>
               <div className="h-2.5 bg-muted rounded-full overflow-hidden">
-                <div className={`h-full rounded-full transition-all duration-700 ${sc.bar}`} style={{ width: `${overallProgress}%` }} />
+                <div className={`h-full rounded-full transition-all duration-700 ${barColor}`} style={{ width: `${overallProgress}%` }} />
               </div>
               <div className="flex items-center gap-4 mt-2 text-[10.5px] text-muted-foreground font-semibold">
                 <span>Contract: {currency} {(totalContractVal / 1000).toFixed(0)}K</span>

@@ -14,6 +14,7 @@ import { PROJECT_TYPES } from "@/components/projects/ProjectTypeConfig";
 import useUserStore from "@/store/useUserStore";
 import useSettingsStore from "@/store/useSettingsStore";
 import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import { computeProjectStatus, PROJECT_STATUS_CONFIG } from "@/lib/projectStatus";
 
 /* Triggers a project fetch the first time the page is visited */
 function useProjectsFetch() {
@@ -21,39 +22,9 @@ function useProjectsFetch() {
   useEffect(() => { fetchProjects(); }, [fetchProjects]);
 }
 
-/* ─── Status config ───────────────────────────────────────────────── */
-const statusConfig = {
-  "On Track": {
-    bg: "bg-status-ontrack/10",
-    text: "text-status-ontrack",
-    dot: "bg-status-ontrack",
-    border: "border-status-ontrack/20",
-  },
-  "Ahead": {
-    bg: "bg-status-ahead/10",
-    text: "text-status-ahead",
-    dot: "bg-status-ahead",
-    border: "border-status-ahead/20",
-  },
-  "Delayed": {
-    bg: "bg-status-delayed/10",
-    text: "text-status-delayed",
-    dot: "bg-status-delayed",
-    border: "border-status-delayed/20",
-  },
-  "At Risk": {
-    bg: "bg-status-atrisk/10",
-    text: "text-status-atrisk",
-    dot: "bg-status-atrisk",
-    border: "border-status-atrisk/20",
-  },
-  "Completed": {
-    bg: "bg-emerald-500/10",
-    text: "text-emerald-600 dark:text-emerald-400",
-    dot: "bg-emerald-500",
-    border: "border-emerald-500/20",
-  },
-};
+/* ─── Status config (use shared config from utility) ─────────────── */
+const statusConfig = PROJECT_STATUS_CONFIG;
+
 
 /* ─── Progress bar colour ─────────────────────────────────────────── */
 function progressBarColor(p) {
@@ -137,7 +108,8 @@ function ProjectCard({ project }) {
   const isReadOnly = currentUser?.role === "User";
 
   const progressPercent = project.progress !== null ? Math.round(project.progress) : 0;
-  const resolvedStatus = progressPercent >= 100 ? "Completed" : project.status;
+  // Auto-compute status from actual progress vs expected timeline
+  const resolvedStatus = computeProjectStatus(project);
   const sc = statusConfig[resolvedStatus] || statusConfig["On Track"];
   const units = countUnits(project);
   const sections = countSections(project);
@@ -390,17 +362,24 @@ export default function ProjectsPage() {
   const [modalOpen, setModalOpen]       = useState(false);
 
   const filteredProjects = projects.filter((p) => {
+    const computedStatus = computeProjectStatus(p);
     const matchesSearch =
       p.name.toLowerCase().includes(search.toLowerCase()) ||
       p.client.toLowerCase().includes(search.toLowerCase()) ||
       (p.pm || "").toLowerCase().includes(search.toLowerCase());
-    const matchesStatus = statusFilter === "All" || p.status === statusFilter;
+    const matchesStatus = statusFilter === "All" || computedStatus === statusFilter;
     const matchesType   = typeFilter   === "All" || p.type === typeFilter;
     return matchesSearch && matchesStatus && matchesType;
   });
 
-  const onTrack  = projects.filter((p) => p.progress >= 100 || p.status === "On Track" || p.status === "Ahead").length;
-  const atRisk   = projects.filter((p) => p.progress < 100 && (p.status === "At Risk"  || p.status === "Delayed")).length;
+  const onTrack = projects.filter((p) => {
+    const s = computeProjectStatus(p);
+    return s === "On Track" || s === "Ahead";
+  }).length;
+  const atRisk = projects.filter((p) => {
+    const s = computeProjectStatus(p);
+    return s === "At Risk" || s === "Delayed";
+  }).length;
   const avgProg  = projects.length
     ? Math.round(projects.reduce((s, p) => s + (p.progress || 0), 0) / projects.length)
     : 0;

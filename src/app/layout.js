@@ -14,6 +14,7 @@ const inter = Inter({
 });
 
 export const metadata = {
+  metadataBase: new URL("https://build-tracker-henna.vercel.app"),
   title: "BuildTrack ERP | Seven Directions Construction",
   description: "Professional ERP system for construction project management, workforce tracking, and financial oversight.",
   icons: {
