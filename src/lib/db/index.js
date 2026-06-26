@@ -8,6 +8,7 @@ let pool;
 if (process.env.NODE_ENV === "production") {
   pool = new Pool({
     connectionString: process.env.DATABASE_URL,
+    max: 1, // Limit serverless instance to 1 connection to prevent exhausting database pool limits on Vercel
     ssl: {
       rejectUnauthorized: false,
     },
