@@ -84,3 +84,96 @@ export async function POST(request) {
     );
   }
 }
+
+// GET: Retrieve paginated list of advances, optionally filtered by worker
+export async function GET(request) {
+  try {
+    const { searchParams } = request.nextUrl;
+    const workerIdParam = searchParams.get("workerId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+
+    const conditions = [];
+    const values = [];
+
+    if (workerIdParam) {
+      const numericWorkerId = getNumericId(workerIdParam);
+      if (numericWorkerId) {
+        values.push(numericWorkerId);
+        conditions.push(`adv.worker_id = $${values.length}`);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 20));
+      const offset = (page - 1) * limit;
+
+      const countRes = await pool.query(
+        `SELECT COUNT(*) FROM advances adv ${whereClause}`,
+        values
+      );
+      const total = parseInt(countRes.rows[0].count, 10);
+      const totalPages = Math.ceil(total / limit);
+
+      const selectQuery = `
+        SELECT adv.id, adv.type, adv.amount, adv.date, adv.description, 
+               adv.status, adv.display_id, w.display_id as worker_display_id
+        FROM advances adv
+        JOIN workers w ON adv.worker_id = w.id
+        ${whereClause}
+        ORDER BY adv.date DESC, adv.id DESC
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+      `;
+
+      const result = await pool.query(selectQuery, [...values, limit, offset]);
+
+      const formatted = result.rows.map((row) => ({
+        id: row.display_id,
+        workerId: row.worker_display_id,
+        type: row.type,
+        amount: Number(row.amount),
+        date: formatDate(row.date),
+        description: row.description,
+        status: row.status,
+      }));
+
+      return NextResponse.json({
+        data: formatted,
+        pagination: { page, limit, total, totalPages }
+      });
+    }
+
+    const selectQuery = `
+      SELECT adv.id, adv.type, adv.amount, adv.date, adv.description, 
+             adv.status, adv.display_id, w.display_id as worker_display_id
+      FROM advances adv
+      JOIN workers w ON adv.worker_id = w.id
+      ${whereClause}
+      ORDER BY adv.date DESC, adv.id DESC
+      LIMIT 500
+    `;
+
+    const result = await pool.query(selectQuery, values);
+
+    const formatted = result.rows.map((row) => ({
+      id: row.display_id,
+      workerId: row.worker_display_id,
+      type: row.type,
+      amount: Number(row.amount),
+      date: formatDate(row.date),
+      description: row.description,
+      status: row.status,
+    }));
+
+    return NextResponse.json(formatted);
+  } catch (error) {
+    console.error("GET /api/advances error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}

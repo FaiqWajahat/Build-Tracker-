@@ -8,20 +8,69 @@ const useContractorStore = create((set, get) => ({
   contractors: [],
   deductions: [],
   payments: [],
+  deductionsPagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
+  paymentsPagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
   loading: false,
   loaded: false,
 
-  /* ── Fetch Data ──────────────────────────────────────────────── */
   fetchContractorData: async () => {
     if (get().loaded) return;
     set({ loading: true });
     try {
       const response = await axios.get("/api/contractors");
-      const { contractors, deductions, payments } = response.data;
-      set({ contractors, deductions, payments, loaded: true });
+      const { contractors } = response.data;
+      set({ contractors, deductions: [], payments: [], loaded: true });
     } catch (error) {
       console.error("fetchContractorData error:", error);
       toast.error("Failed to load contractor data");
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fetchDeductions: async (contractorId, page = 1, limit = 10) => {
+    set({ loading: true });
+    try {
+      const contractorQuery = contractorId ? `contractorId=${contractorId}&` : "";
+      const response = await axios.get(`/api/contractors/deductions?${contractorQuery}page=${page}&limit=${limit}`);
+      if (response.data && response.data.pagination) {
+        set({
+          deductions: response.data.data,
+          deductionsPagination: response.data.pagination,
+        });
+      } else {
+        set({
+          deductions: response.data || [],
+          deductionsPagination: { page: 1, limit: 500, total: (response.data || []).length, totalPages: 1 },
+        });
+      }
+    } catch (error) {
+      console.error("fetchDeductions error:", error);
+      toast.error("Failed to load contractor deductions");
+    } finally {
+      set({ loading: false });
+    }
+  },
+
+  fetchPayments: async (contractorId, page = 1, limit = 10) => {
+    set({ loading: true });
+    try {
+      const contractorQuery = contractorId ? `contractorId=${contractorId}&` : "";
+      const response = await axios.get(`/api/contractors/payments?${contractorQuery}page=${page}&limit=${limit}`);
+      if (response.data && response.data.pagination) {
+        set({
+          payments: response.data.data,
+          paymentsPagination: response.data.pagination,
+        });
+      } else {
+        set({
+          payments: response.data || [],
+          paymentsPagination: { page: 1, limit: 500, total: (response.data || []).length, totalPages: 1 },
+        });
+      }
+    } catch (error) {
+      console.error("fetchPayments error:", error);
+      toast.error("Failed to load contractor payments");
     } finally {
       set({ loading: false });
     }
@@ -172,7 +221,7 @@ const useContractorStore = create((set, get) => ({
       set((state) => ({
         payments: state.payments.map((p) => (p.id === id ? updatedItem : p)),
       }));
-      toast.error("Payment request rejected");
+      toast.success("Payment request rejected");
     } catch (error) {
       console.error("rejectPayment error:", error);
       toast.error("Failed to reject payment");

@@ -23,7 +23,7 @@ export default function SettingsPage() {
   const [headquartersAddress, setHeadquartersAddress] = useState(settings.headquartersAddress);
   
   const [currency, setCurrency] = useState(settings.currency);
-  const [vatRate, setVatRate] = useState(settings.vatRate);
+  const [retentionRate, setRetentionRate] = useState(settings.retentionRate || "5");
   const [fiscalYearStart, setFiscalYearStart] = useState(settings.fiscalYearStart);
 
   const [notifications, setNotifications] = useState(settings.notifications);
@@ -33,15 +33,18 @@ export default function SettingsPage() {
 
   // Sync state if store settings change
   useEffect(() => {
-    setCompanyName(settings.companyName);
-    setRegistrationNumber(settings.registrationNumber);
-    setHeadquartersAddress(settings.headquartersAddress);
-    setCurrency(settings.currency);
-    setVatRate(settings.vatRate);
-    setFiscalYearStart(settings.fiscalYearStart);
-    setNotifications(settings.notifications);
-    setSessionTimeout(settings.sessionTimeout);
-    setBiometricMatchRate(settings.biometricMatchRate);
+    const timer = setTimeout(() => {
+      setCompanyName(settings.companyName);
+      setRegistrationNumber(settings.registrationNumber);
+      setHeadquartersAddress(settings.headquartersAddress);
+      setCurrency(settings.currency);
+      setRetentionRate(settings.retentionRate || "5");
+      setFiscalYearStart(settings.fiscalYearStart);
+      setNotifications(settings.notifications);
+      setSessionTimeout(settings.sessionTimeout);
+      setBiometricMatchRate(settings.biometricMatchRate);
+    }, 0);
+    return () => clearTimeout(timer);
   }, [settings]);
 
   const handleSave = () => {
@@ -65,7 +68,8 @@ export default function SettingsPage() {
       registrationNumber,
       headquartersAddress,
       currency,
-      vatRate,
+      vatRate: "0",
+      retentionRate,
       fiscalYearStart,
       notifications,
       sessionTimeout,
@@ -91,7 +95,6 @@ export default function SettingsPage() {
           {[
             { id: "company", label: "Company Profile", icon: Building },
             { id: "financial", label: "Financial Settings", icon: DollarSign },
-            { id: "notifications", label: "Notifications", icon: Bell },
             { id: "security", label: "Access & Security", icon: ShieldCheck },
           ].map((tab) => {
             const Icon = tab.icon;
@@ -182,12 +185,12 @@ export default function SettingsPage() {
                     </select>
                   </div>
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">VAT Tax Rate (%)</label>
+                    <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Default Retention Rate (%)</label>
                     <input 
                       disabled={isReadOnly} 
                       type="number" 
-                      value={vatRate} 
-                      onChange={(e) => setVatRate(e.target.value)}
+                      value={retentionRate} 
+                      onChange={(e) => setRetentionRate(e.target.value)}
                       className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring" 
                     />
                   </div>
@@ -207,45 +210,13 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* Tab: Notifications */}
-            {activeTab === "notifications" && (
-              <div className="space-y-4 fade-up">
-                <div>
-                  <h3 className="text-[15px] font-bold text-foreground mb-1">Alerts & Notifications</h3>
-                  <p className="text-xs text-muted-foreground">Configure automated SMS and email summaries for site PMs.</p>
-                </div>
-
-                <div className="space-y-3 pt-2">
-                  {[
-                    { key: "emailSummary", title: "Daily Labour Summary", desc: "Receive email summaries of daily attendance logs." },
-                    { key: "delayAlerts", title: "Site Delay Notifications", desc: "Trigger SMS warning alerts when progress logs flag delays." },
-                    { key: "invoiceOverdue", title: "Invoice Reminders", desc: "Auto-email contractors when billing payment is overdue." },
-                    { key: "assetMaintenance", title: "Asset Maintenance Warnings", desc: "Alert fleet manager when a machine passes its service date." }
-                  ].map((item) => (
-                    <div key={item.key} className="flex items-center justify-between p-3 bg-muted/20 border border-border rounded-xl">
-                      <div>
-                        <p className="text-xs font-semibold text-foreground">{item.title}</p>
-                        <p className="text-[11px] text-muted-foreground mt-0.5">{item.desc}</p>
-                      </div>
-                      <button
-                        onClick={() => !isReadOnly && setNotifications(prev => ({ ...prev, [item.key]: !prev[item.key] }))}
-                        disabled={isReadOnly}
-                        className="bg-transparent border-none cursor-pointer text-primary transition-transform disabled:opacity-50 disabled:cursor-not-allowed"
-                      >
-                        {notifications[item.key] ? <ToggleRight size={24} /> : <ToggleLeft size={24} className="text-muted-foreground/60" />}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {/* Tab: Security */}
             {activeTab === "security" && (
               <div className="space-y-4 fade-up">
                 <div>
                   <h3 className="text-[15px] font-bold text-foreground mb-1">Access & Security Settings</h3>
-                  <p className="text-xs text-muted-foreground">Configure session timeouts and biometric verification thresholds.</p>
+                  <p className="text-xs text-muted-foreground">Configure session timeouts for active user sessions.</p>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -260,19 +231,6 @@ export default function SettingsPage() {
                       <option value="30">30 Minutes</option>
                       <option value="60">1 Hour</option>
                       <option value="120">2 Hours</option>
-                    </select>
-                  </div>
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[11.5px] font-bold text-muted-foreground uppercase tracking-wider">Biometric Match Rate</label>
-                    <select 
-                      disabled={isReadOnly} 
-                      value={biometricMatchRate}
-                      onChange={(e) => setBiometricMatchRate(e.target.value)}
-                      className="px-3 py-2 bg-muted text-foreground text-xs rounded-lg border border-border outline-none cursor-pointer focus:border-ring"
-                    >
-                      <option value="98">98% Match (High Security)</option>
-                      <option value="95">95% Match (Standard)</option>
-                      <option value="90">90% Match (Fast Verification)</option>
                     </select>
                   </div>
                 </div>

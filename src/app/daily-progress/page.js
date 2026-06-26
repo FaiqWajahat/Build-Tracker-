@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   TrendingUp, CheckCircle2, Clipboard, AlertOctagon,
   Search, Plus, Calendar, User, Check, X, ChevronRight,
@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import useProgressStore from "@/store/useProgressStore";
+import { Pagination } from "@/components/ui/Pagination";
 import useProjectStore from "@/store/useProjectStore";
 import useAssignmentStore from "@/store/useAssignmentStore";
 import useUserStore from "@/store/useUserStore";
@@ -30,7 +31,9 @@ export default function DailyProgressPage() {
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
   const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
   const assignments = useAssignmentStore((s) => s.assignments);
+  const fetchAssignments = useAssignmentStore((s) => s.fetchAssignments);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -39,9 +42,26 @@ export default function DailyProgressPage() {
   const [dateTo, setDateTo] = useState("");
   const [expandedLog, setExpandedLog] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   const loading = useProgressStore((s) => s.loading);
   const loaded = useProgressStore((s) => s.loaded);
+  const pagination = useProgressStore((s) => s.pagination);
+  const fetchLogs = useProgressStore((s) => s.fetchLogs);
+
+  useEffect(() => {
+    fetchProjects();
+    fetchAssignments();
+  }, [fetchProjects, fetchAssignments]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setCurrentPage(1), 0);
+    return () => clearTimeout(timer);
+  }, [projectFilter, statusFilter, search, dateFrom, dateTo]);
+
+  useEffect(() => {
+    fetchLogs(projectFilter === "All" ? null : projectFilter, true, currentPage, 20);
+  }, [projectFilter, currentPage, fetchLogs]);
 
   /* ── KPIs ── */
   const today = new Date().toISOString().split("T")[0];
@@ -323,6 +343,13 @@ export default function DailyProgressPage() {
           </div>
         )}
       </div>
+
+      <Pagination
+        page={pagination?.page || 1}
+        totalPages={pagination?.totalPages || 1}
+        onPageChange={(p) => setCurrentPage(p)}
+        loading={loading}
+      />
 
       {deleteTarget && (
         <DeleteConfirmModal

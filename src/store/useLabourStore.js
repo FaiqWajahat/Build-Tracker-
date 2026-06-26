@@ -9,6 +9,10 @@ const useLabourStore = create((set, get) => ({
   attendance: [],
   advances: [],
   teams: [],
+  workerAttendance: [],
+  workerAttendancePagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
+  workerAdvances: [],
+  workerAdvancesPagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
   loading: false,
   loaded: false,
   error: null,
@@ -109,6 +113,23 @@ const useLabourStore = create((set, get) => ({
   getWorker: (id) => get().workers.find((w) => w.id === id),
 
   /* ── Attendance CRUD ───────────────────────────────────────────────── */
+  fetchWorkerAttendance: async (workerId) => {
+    set({ loading: true });
+    try {
+      const res = await axios.get(`/api/attendance?workerId=${workerId}`);
+      set({
+        workerAttendance: res.data || [],
+        error: null,
+      });
+    } catch (err) {
+      const msg = err.response?.data?.error || "Failed to load worker attendance";
+      set({ error: msg });
+      toast.error(msg);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
   addAttendance: async (attendanceData) => {
     set({ loading: true });
     try {
@@ -116,17 +137,23 @@ const useLabourStore = create((set, get) => ({
       const newEntry = res.data;
       
       set((state) => {
-        const list = state.attendance;
+        let list = [...state.attendance];
         const exists = list.some((a) => a.workerId === newEntry.workerId && a.date === newEntry.date);
         if (exists) {
-          return {
-            attendance: list.map((a) => (a.workerId === newEntry.workerId && a.date === newEntry.date ? newEntry : a)),
-          };
+          list = list.map((a) => (a.workerId === newEntry.workerId && a.date === newEntry.date ? newEntry : a));
         } else {
-          return {
-            attendance: [newEntry, ...list],
-          };
+          list.unshift(newEntry);
         }
+
+        let workerList = [...state.workerAttendance];
+        const workerExists = workerList.some((a) => a.workerId === newEntry.workerId && a.date === newEntry.date);
+        if (workerExists) {
+          workerList = workerList.map((a) => (a.workerId === newEntry.workerId && a.date === newEntry.date ? newEntry : a));
+        } else {
+          workerList.unshift(newEntry);
+        }
+
+        return { attendance: list, workerAttendance: workerList };
       });
       toast.success("Attendance marked!");
       return newEntry;
@@ -145,6 +172,7 @@ const useLabourStore = create((set, get) => ({
       const res = await axios.put(`/api/attendance/${id}`, data);
       set((state) => ({
         attendance: state.attendance.map((a) => (a.id === id ? res.data : a)),
+        workerAttendance: state.workerAttendance.map((a) => (a.id === id ? res.data : a)),
       }));
       toast.success("Attendance updated!");
       return res.data;
@@ -163,6 +191,7 @@ const useLabourStore = create((set, get) => ({
       await axios.delete(`/api/attendance/${id}`);
       set((state) => ({
         attendance: state.attendance.filter((a) => a.id !== id),
+        workerAttendance: state.workerAttendance.filter((a) => a.id !== id),
       }));
       toast.success("Attendance record removed!");
     } catch (err) {
@@ -247,13 +276,30 @@ const useLabourStore = create((set, get) => ({
     return regularHours * hourlyRate + overtimeHours * hourlyRate * 1.5;
   },
 
-  /* ── Advances / Expenses CRUD ──────────────────────────────────────── */
+  fetchWorkerAdvances: async (workerId) => {
+    set({ loading: true });
+    try {
+      const res = await axios.get(`/api/advances?workerId=${workerId}`);
+      set({
+        workerAdvances: res.data || [],
+        error: null,
+      });
+    } catch (err) {
+      const msg = err.response?.data?.error || "Failed to load worker advances";
+      set({ error: msg });
+      toast.error(msg);
+    } finally {
+      set({ loading: false });
+    }
+  },
+
   addAdvance: async (advanceData) => {
     set({ loading: true });
     try {
       const res = await axios.post("/api/advances", advanceData);
       set((state) => ({
         advances: [res.data, ...state.advances],
+        workerAdvances: [res.data, ...state.workerAdvances],
       }));
       toast.success("Transaction recorded!");
       return res.data;
@@ -272,6 +318,7 @@ const useLabourStore = create((set, get) => ({
       const res = await axios.put(`/api/advances/${id}`, data);
       set((state) => ({
         advances: state.advances.map((a) => (a.id === id ? res.data : a)),
+        workerAdvances: state.workerAdvances.map((a) => (a.id === id ? res.data : a)),
       }));
       toast.success("Transaction updated!");
       return res.data;
@@ -290,6 +337,7 @@ const useLabourStore = create((set, get) => ({
       await axios.delete(`/api/advances/${id}`);
       set((state) => ({
         advances: state.advances.filter((a) => a.id !== id),
+        workerAdvances: state.workerAdvances.filter((a) => a.id !== id),
       }));
       toast.success("Transaction deleted!");
     } catch (err) {
@@ -303,7 +351,7 @@ const useLabourStore = create((set, get) => ({
 
   getWorkerAdvances: (workerId) =>
     get()
-      .advances.filter((a) => a.workerId === workerId)
+      .workerAdvances.filter((a) => a.workerId === workerId)
       .sort((a, b) => new Date(b.date) - new Date(a.date)),
 
   /* ── Teams CRUD ────────────────────────────────────────────────────── */

@@ -20,8 +20,8 @@ export default function GenerateInvoiceModal({ onClose, onSuccess }) {
     invoiceType: "progress",
     invoiceDate: new Date().toISOString().split("T")[0],
     dueDate: "",
-    retentionRate: 5,
-    vatRate: parseFloat(settings.vatRate) || 15,
+    retentionRate: parseFloat(settings.retentionRate) || 5,
+    vatRate: 0,
     periodFrom: "",
     periodTo: "",
     notes: "",
@@ -48,7 +48,7 @@ export default function GenerateInvoiceModal({ onClose, onSuccess }) {
         invoiceDate: form.invoiceDate,
         dueDate: form.dueDate || null,
         retentionRate: form.retentionRate / 100,
-        vatRate: form.vatRate / 100,
+        vatRate: 0,
         periodFrom: form.periodFrom || null,
         periodTo: form.periodTo || null,
         notes: form.notes,
@@ -193,43 +193,23 @@ export default function GenerateInvoiceModal({ onClose, onSuccess }) {
             <p className="text-[10px] text-muted-foreground mt-1">Leave empty to include all logged progress</p>
           </div>
 
-          {/* Rates */}
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                <Percent size={10} className="inline mr-1" />Retention Rate
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  value={form.retentionRate}
-                  onChange={(e) => set("retentionRate", parseFloat(e.target.value) || 0)}
-                  disabled={submitting}
-                  className="w-full px-3 py-2 pr-8 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors disabled:opacity-50"
-                />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-bold">%</span>
-              </div>
-            </div>
-            <div>
-              <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
-                <Percent size={10} className="inline mr-1" />VAT Rate
-              </label>
-              <div className="relative">
-                <input
-                  type="number"
-                  min="0"
-                  max="100"
-                  step="0.5"
-                  value={form.vatRate}
-                  onChange={(e) => set("vatRate", parseFloat(e.target.value) || 0)}
-                  disabled={submitting}
-                  className="w-full px-3 py-2 pr-8 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors disabled:opacity-50"
-                />
-                <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-bold">%</span>
-              </div>
+          {/* Retention Rate */}
+          <div>
+            <label className="block text-[11px] font-bold text-muted-foreground uppercase tracking-wider mb-1.5">
+              <Percent size={10} className="inline mr-1" />Retention Rate
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                min="0"
+                max="100"
+                step="0.5"
+                value={form.retentionRate}
+                onChange={(e) => set("retentionRate", parseFloat(e.target.value) || 0)}
+                disabled={submitting}
+                className="w-full px-3 py-2 pr-8 bg-muted text-foreground text-xs rounded-lg border border-border outline-none focus:border-ring transition-colors disabled:opacity-50"
+              />
+              <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground font-bold">%</span>
             </div>
           </div>
 

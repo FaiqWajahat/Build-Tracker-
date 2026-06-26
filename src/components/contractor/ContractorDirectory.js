@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import {
   Search, Plus, Star, MapPin, Mail, Phone,
   ChevronRight, HardHat, Award, DollarSign, Briefcase,
@@ -59,7 +59,7 @@ export default function ContractorDirectory({
   const [statusFilter, setStatusFilter] = useState("All");
   const [tradeFilter, setTradeFilter] = useState("All Trades");
 
-  const getStats = (c) => {
+  const getStats = useCallback((c) => {
     const subcontracts = allAssignments.filter(
       (a) => a.assigneeId === c.id || a.assigneeName?.toLowerCase() === c.name?.toLowerCase()
     );
@@ -87,9 +87,9 @@ export default function ContractorDirectory({
     const outstandingLiability = Math.max(0, totalEarnedVal - totalDeductions - totalPaidMTD);
     const uniqueProjects = [...new Set(subcontracts.map((a) => a.projectId))];
     return { subcontracts, totalSubcontractVal, totalEarnedVal, totalDeductions, totalPaidMTD, outstandingLiability, uniqueProjects };
-  };
+  }, [allAssignments, allLogs, deductions, payments]);
 
-  const enriched = useMemo(() => contractors.map((c) => ({ ...c, ...getStats(c) })), [contractors, allAssignments, allLogs, deductions, payments]);
+  const enriched = useMemo(() => contractors.map((c) => ({ ...c, ...getStats(c) })), [contractors, getStats]);
 
   const filtered = useMemo(() => enriched.filter((c) => {
     const matchSearch = !search ||

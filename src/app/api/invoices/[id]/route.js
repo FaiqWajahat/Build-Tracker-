@@ -7,8 +7,8 @@ import { verifyAdmin } from "@/lib/auth";
 // ---------------------------------------------------------------------------
 function formatInvoice(invoice, lineItems = []) {
   const subtotal = lineItems.reduce((s, li) => s + Number(li.current_amount || 0), 0);
-  const retentionRate = Number(invoice.retention_rate || 0.05);
-  const vatRate = Number(invoice.vat_rate || 0.15);
+  const retentionRate = Number(invoice.retention_rate ?? 0.05);
+  const vatRate = Number(invoice.vat_rate ?? 0.15);
   const retention = subtotal * retentionRate;
   const netAfterRetention = subtotal - retention;
   const vat = netAfterRetention * vatRate;

@@ -7,8 +7,8 @@ import { verifyAdmin } from "@/lib/auth";
 // ---------------------------------------------------------------------------
 function formatInvoice(invoice, lineItems = []) {
   const subtotal = lineItems.reduce((s, li) => s + Number(li.current_amount || 0), 0);
-  const retentionRate = Number(invoice.retention_rate || 0.05);
-  const vatRate = Number(invoice.vat_rate || 0.15);
+  const retentionRate = Number(invoice.retention_rate ?? 0.05);
+  const vatRate = Number(invoice.vat_rate ?? 0.15);
   const retention = subtotal * retentionRate;
   const netAfterRetention = subtotal - retention;
   const vat = netAfterRetention * vatRate;
@@ -152,17 +152,49 @@ export async function GET(request) {
     await ensureInvoiceTablesExist();
     const { searchParams } = request.nextUrl;
     const projectId = searchParams.get("projectId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
     let invoicesRes;
-    if (projectId) {
-      invoicesRes = await pool.query(
-        `SELECT * FROM invoices WHERE project_display_id = $1 ORDER BY invoice_number DESC`,
-        [projectId]
-      );
+    let pagination = null;
+
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 10));
+      const offset = (page - 1) * limit;
+
+      let countRes;
+      if (projectId) {
+        countRes = await pool.query(
+          `SELECT COUNT(*) FROM invoices WHERE project_display_id = $1`,
+          [projectId]
+        );
+        invoicesRes = await pool.query(
+          `SELECT * FROM invoices WHERE project_display_id = $1 ORDER BY invoice_number DESC LIMIT $2 OFFSET $3`,
+          [projectId, limit, offset]
+        );
+      } else {
+        countRes = await pool.query(`SELECT COUNT(*) FROM invoices`);
+        invoicesRes = await pool.query(
+          `SELECT * FROM invoices ORDER BY created_at DESC LIMIT $1 OFFSET $2`,
+          [limit, offset]
+        );
+      }
+
+      const total = parseInt(countRes.rows[0].count, 10);
+      const totalPages = Math.ceil(total / limit);
+      pagination = { page, limit, total, totalPages };
     } else {
-      invoicesRes = await pool.query(
-        `SELECT * FROM invoices ORDER BY created_at DESC`
-      );
+      if (projectId) {
+        invoicesRes = await pool.query(
+          `SELECT * FROM invoices WHERE project_display_id = $1 ORDER BY invoice_number DESC LIMIT 500`,
+          [projectId]
+        );
+      } else {
+        invoicesRes = await pool.query(
+          `SELECT * FROM invoices ORDER BY created_at DESC LIMIT 500`
+        );
+      }
     }
 
     const invoiceIds = invoicesRes.rows.map((i) => i.id);
@@ -183,6 +215,10 @@ export async function GET(request) {
     const formatted = invoicesRes.rows.map((inv) =>
       formatInvoice(inv, lineItemsByInvoice[inv.id] || [])
     );
+
+    if (pagination) {
+      return NextResponse.json({ data: formatted, pagination });
+    }
 
     return NextResponse.json(formatted);
   } catch (error) {

@@ -120,3 +120,120 @@ export async function POST(request) {
     );
   }
 }
+
+// GET: Retrieve paginated list of attendance entries, optionally filtered by worker, project, or date
+export async function GET(request) {
+  try {
+    const { searchParams } = request.nextUrl;
+    const workerIdParam = searchParams.get("workerId");
+    const projectId = searchParams.get("projectId");
+    const date = searchParams.get("date");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+
+    const conditions = [];
+    const values = [];
+
+    if (workerIdParam) {
+      const numericWorkerId = getNumericId(workerIdParam);
+      if (numericWorkerId) {
+        values.push(numericWorkerId);
+        conditions.push(`a.worker_id = $${values.length}`);
+      }
+    }
+    if (projectId) {
+      values.push(projectId);
+      conditions.push(`a.project_id = $${values.length}`);
+    }
+    if (date) {
+      values.push(date);
+      conditions.push(`a.date = $${values.length}`);
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 20));
+      const offset = (page - 1) * limit;
+
+      const countRes = await pool.query(
+        `SELECT COUNT(*) FROM attendance a ${whereClause}`,
+        values
+      );
+      const total = parseInt(countRes.rows[0].count, 10);
+      const totalPages = Math.ceil(total / limit);
+
+      const selectQuery = `
+        SELECT a.id, a.date, a.project_id, a.status, a.shift, 
+               a.clock_in, a.clock_out, a.break_minutes, a.hours_worked, 
+               a.overtime, a.location, a.notes, a.display_id, w.display_id as worker_display_id
+        FROM attendance a
+        JOIN workers w ON a.worker_id = w.id
+        ${whereClause}
+        ORDER BY a.date DESC, a.id DESC
+        LIMIT $${values.length + 1} OFFSET $${values.length + 2}
+      `;
+
+      const result = await pool.query(selectQuery, [...values, limit, offset]);
+
+      const formatted = result.rows.map((row) => ({
+        id: row.display_id,
+        workerId: row.worker_display_id,
+        date: formatDate(row.date),
+        projectId: row.project_id,
+        status: row.status,
+        shift: row.shift,
+        clockIn: row.clock_in ? row.clock_in.substring(0, 5) : null,
+        clockOut: row.clock_out ? row.clock_out.substring(0, 5) : null,
+        breakMinutes: Number(row.break_minutes),
+        hoursWorked: Number(row.hours_worked),
+        overtime: Number(row.overtime),
+        location: row.location,
+        notes: row.notes,
+      }));
+
+      return NextResponse.json({
+        data: formatted,
+        pagination: { page, limit, total, totalPages }
+      });
+    }
+
+    const selectQuery = `
+      SELECT a.id, a.date, a.project_id, a.status, a.shift, 
+             a.clock_in, a.clock_out, a.break_minutes, a.hours_worked, 
+             a.overtime, a.location, a.notes, a.display_id, w.display_id as worker_display_id
+      FROM attendance a
+      JOIN workers w ON a.worker_id = w.id
+      ${whereClause}
+      ORDER BY a.date DESC, a.id DESC
+      LIMIT 500
+    `;
+
+    const result = await pool.query(selectQuery, values);
+
+    const formatted = result.rows.map((row) => ({
+      id: row.display_id,
+      workerId: row.worker_display_id,
+      date: formatDate(row.date),
+      projectId: row.project_id,
+      status: row.status,
+      shift: row.shift,
+      clockIn: row.clock_in ? row.clock_in.substring(0, 5) : null,
+      clockOut: row.clock_out ? row.clock_out.substring(0, 5) : null,
+      breakMinutes: Number(row.break_minutes),
+      hoursWorked: Number(row.hours_worked),
+      overtime: Number(row.overtime),
+      location: row.location,
+      notes: row.notes,
+    }));
+
+    return NextResponse.json(formatted);
+  } catch (error) {
+    console.error("GET /api/attendance error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}

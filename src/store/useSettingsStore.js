@@ -8,7 +8,8 @@ const DEFAULT_SETTINGS = {
   registrationNumber: "CR-1010998877",
   headquartersAddress: "Olaya District, Riyadh 12211, Saudi Arabia",
   currency: "SAR",
-  vatRate: "15",
+  vatRate: "0",
+  retentionRate: "5",
   fiscalYearStart: "1",
   notifications: {
     emailSummary: true,
@@ -69,7 +70,8 @@ export function useCurrency() {
   const currency = useSettingsStore((s) => s.settings.currency);
 
   useEffect(() => {
-    setMounted(true);
+    const timer = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timer);
   }, []);
 
   return mounted ? currency : "SAR";
@@ -80,7 +82,8 @@ export function useCompanyName() {
   const companyName = useSettingsStore((s) => s.settings.companyName);
 
   useEffect(() => {
-    setMounted(true);
+    const timer = setTimeout(() => setMounted(true), 0);
+    return () => clearTimeout(timer);
   }, []);
 
   return mounted ? companyName : "Seven Directions Construction";

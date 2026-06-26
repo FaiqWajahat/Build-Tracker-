@@ -82,3 +82,86 @@ export async function POST(request) {
     );
   }
 }
+
+// GET: Retrieve contractor deductions with pagination
+export async function GET(request) {
+  try {
+    const { searchParams } = request.nextUrl;
+    const contractorIdParam = searchParams.get("contractorId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+
+    const conditions = [];
+    const values = [];
+
+    if (contractorIdParam) {
+      const intId = parseInt(contractorIdParam.replace("CON-", ""), 10);
+      if (!isNaN(intId)) {
+        values.push(intId);
+        conditions.push(`d.contractor_id = $${values.length}`);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    let deductionsRes;
+    let pagination = null;
+
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 10));
+      const offset = (page - 1) * limit;
+
+      const countRes = await pool.query(
+        `SELECT COUNT(*) FROM contractor_deductions d ${whereClause}`,
+        values
+      );
+      const total = parseInt(countRes.rows[0].count, 10);
+      const totalPages = Math.ceil(total / limit);
+      pagination = { page, limit, total, totalPages };
+
+      deductionsRes = await pool.query(
+        `SELECT d.*, c.display_id as contractor_display_id, c.name as contractor_name 
+         FROM contractor_deductions d 
+         JOIN contractors c ON d.contractor_id = c.id 
+         ${whereClause}
+         ORDER BY d.date DESC, d.id DESC
+         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, limit, offset]
+      );
+    } else {
+      deductionsRes = await pool.query(
+        `SELECT d.*, c.display_id as contractor_display_id, c.name as contractor_name 
+         FROM contractor_deductions d 
+         JOIN contractors c ON d.contractor_id = c.id 
+         ${whereClause}
+         ORDER BY d.date DESC, d.id DESC
+         LIMIT 500`,
+        values
+      );
+    }
+
+    const formatted = deductionsRes.rows.map((row) => ({
+      id: row.display_id,
+      contractorId: row.contractor_display_id,
+      contractorName: row.contractor_name,
+      site: row.site,
+      amount: Number(row.amount),
+      category: row.category,
+      date: formatDate(row.date),
+      approvedBy: row.approved_by,
+      description: row.description,
+    }));
+
+    if (pagination) {
+      return NextResponse.json({ data: formatted, pagination });
+    }
+    return NextResponse.json(formatted);
+  } catch (error) {
+    console.error("GET /api/contractors/deductions error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}

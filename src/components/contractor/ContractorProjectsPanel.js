@@ -278,7 +278,7 @@ export default function ContractorProjectsPanel({ contractor, onBack, onSelectPr
             <div className="bg-card border border-border rounded-2xl py-16 text-center">
               <Layers size={32} className="mx-auto mb-3 text-muted-foreground/40" />
               <p className="text-sm font-semibold text-muted-foreground">No project assignments yet</p>
-              <p className="text-xs text-muted-foreground mt-1 mb-4">Use the "Assign Scope" button to assign this contractor to a project</p>
+              <p className="text-xs text-muted-foreground mt-1 mb-4">Use the &quot;Assign Scope&quot; button to assign this contractor to a project</p>
               <button
                 onClick={() => setShowAssignModal(true)}
                 className="inline-flex items-center gap-1.5 px-4 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-xl cursor-pointer"

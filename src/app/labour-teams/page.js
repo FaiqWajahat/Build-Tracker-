@@ -18,6 +18,7 @@ import Link from "next/link";
 import Loader from "@/components/ui/Loader";
 import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
 import useSettingsStore from "@/store/useSettingsStore";
+import { Pagination } from "@/components/ui/Pagination";
 
 /* ─── Constants ─────────────────────────────────────────────────────────── */
 const TRADES = [
@@ -114,7 +115,7 @@ function AddWorkerModal({ onClose, onSave, editWorker }) {
               {editWorker ? "Edit Labour Member" : "Add Labour Member"}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">
-              Fill in the worker's details and pay information
+              Fill in the worker&apos;s details and pay information
             </p>
           </div>
           <button onClick={onClose} className="p-2 rounded-lg hover:bg-muted transition-colors">
@@ -500,7 +501,8 @@ export default function LabourPage() {
     addWorker, updateWorker, deleteWorker, fetchLabourData,
     loading, loaded
   } = useLabourStore();
-  const { projects } = useProjectStore();
+  const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
   const currency = useSettingsStore((s) => s.settings.currency);
@@ -509,29 +511,6 @@ export default function LabourPage() {
   const fetchLogs = useProgressStore((s) => s.fetchLogs);
   const allAssignments = useAssignmentStore((s) => s.assignments);
   const allLogs = useProgressStore((s) => s.logs);
-
-  useEffect(() => {
-    fetchLabourData();
-    fetchAssignments();
-    fetchLogs();
-  }, [fetchLabourData, fetchAssignments, fetchLogs]);
-
-  useEffect(() => {
-    if (typeof window !== "undefined" && workers.length > 0) {
-      const params = new URLSearchParams(window.location.search);
-      const workerId = params.get("workerId");
-      if (workerId) {
-        const found = workers.find(w => w.id === workerId || w.display_id === workerId);
-        if (found) {
-          setSelectedWorker(found);
-        }
-      }
-      const teamId = params.get("teamId");
-      if (teamId) {
-        setActiveTab("teams");
-      }
-    }
-  }, [workers]);
 
   const [search, setSearch] = useState("");
   const [tradeFilter, setTradeFilter] = useState("All");
@@ -542,6 +521,36 @@ export default function LabourPage() {
   const [selectedWorker, setSelectedWorker] = useState(null);
   const [activeTab, setActiveTab] = useState("workers");
   const [deleteWorkerTarget, setDeleteWorkerTarget] = useState(null);
+
+  useEffect(() => {
+    fetchLabourData();
+    fetchAssignments();
+    fetchProjects();
+    fetchLogs();
+  }, [fetchLabourData, fetchAssignments, fetchProjects, fetchLogs]);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && workers.length > 0) {
+      const params = new URLSearchParams(window.location.search);
+      const workerId = params.get("workerId");
+      if (workerId) {
+        const found = workers.find(w => w.id === workerId || w.display_id === workerId);
+        if (found) {
+          const timer = setTimeout(() => {
+            setSelectedWorker(found);
+          }, 0);
+          return () => clearTimeout(timer);
+        }
+      }
+      const teamId = params.get("teamId");
+      if (teamId) {
+        const timer = setTimeout(() => {
+          setActiveTab("teams");
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [workers]);
 
   const filtered = useMemo(() => {
     return workers.filter((w) => {
@@ -1201,6 +1210,10 @@ function TeamModal({ editTeam, workers, projects, onClose, onSave }) {
 /* ─── Worker Profile ─────────────────────────────────────────────────────── */
 function WorkerProfile({ worker, workers, attendance, advances, teams, projects, onBack, onEdit }) {
   const {
+    workerAttendance,
+    workerAdvances: storeWorkerAdvances,
+    fetchWorkerAttendance,
+    fetchWorkerAdvances,
     addAttendance, deleteAttendance,
     addAdvance, updateAdvance, deleteAdvance,
     calculatePayable,
@@ -1233,13 +1246,29 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
     status: "pending",
   });
 
-  const workerAtt = attendance
+  const [attPage, setAttPage] = useState(1);
+  const [advPage, setAdvPage] = useState(1);
+
+  useEffect(() => {
+    fetchWorkerAttendance(worker.id);
+    fetchWorkerAdvances(worker.id);
+  }, [worker.id, fetchWorkerAttendance, fetchWorkerAdvances]);
+
+  const workerAtt = workerAttendance
     .filter((a) => a.workerId === worker.id)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
 
-  const workerAdvances = advances
+  const workerAdvances = storeWorkerAdvances
     .filter((a) => a.workerId === worker.id)
     .sort((a, b) => new Date(b.date) - new Date(a.date));
+
+  const attLimit = 10;
+  const totalAttPages = Math.ceil(workerAtt.length / attLimit);
+  const paginatedAtt = workerAtt.slice((attPage - 1) * attLimit, attPage * attLimit);
+
+  const advLimit = 10;
+  const totalAdvPages = Math.ceil(workerAdvances.length / advLimit);
+  const paginatedAdvances = workerAdvances.slice((advPage - 1) * advLimit, advPage * advLimit);
 
   const workerTeams = teams.filter(
     (t) => t.memberIds.includes(worker.id) || t.leaderId === worker.id
@@ -1484,36 +1513,44 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
             {workerAtt.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">No attendance records yet.</p>
             ) : (
-              <div className="space-y-1.5 max-h-[500px] overflow-y-auto">
-                {workerAtt.map((rec) => {
-                  const proj = projects.find((p) => p.id === rec.projectId);
-                  const sc = STATUS_CONFIG[rec.status] || STATUS_CONFIG.present;
-                  const dotColor = rec.status === "present" ? "#10b981" : rec.status === "absent" ? "#ef4444" : rec.status === "half-day" ? "#f59e0b" : "#3b82f6";
-                  return (
-                    <div key={rec.id} className="flex items-center gap-3 bg-muted/40 hover:bg-muted/60 rounded-xl px-4 py-3 transition-colors group">
-                      <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-semibold text-foreground">{rec.date}</span>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
-                          {proj && <span className="text-[10px] text-muted-foreground">{proj.name}</span>}
+              <>
+                <div className="space-y-1.5 max-h-[500px] overflow-y-auto">
+                  {paginatedAtt.map((rec) => {
+                    const proj = projects.find((p) => p.id === rec.projectId);
+                    const sc = STATUS_CONFIG[rec.status] || STATUS_CONFIG.present;
+                    const dotColor = rec.status === "present" ? "#10b981" : rec.status === "absent" ? "#ef4444" : rec.status === "half-day" ? "#f59e0b" : "#3b82f6";
+                    return (
+                      <div key={rec.id} className="flex items-center gap-3 bg-muted/40 hover:bg-muted/60 rounded-xl px-4 py-3 transition-colors group">
+                        <div className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: dotColor }} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-semibold text-foreground">{rec.date}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${sc.bg} ${sc.color}`}>{sc.label}</span>
+                            {proj && <span className="text-[10px] text-muted-foreground">{proj.name}</span>}
+                          </div>
+                          {rec.notes && <p className="text-[10px] text-muted-foreground mt-0.5">{rec.notes}</p>}
                         </div>
-                        {rec.notes && <p className="text-[10px] text-muted-foreground mt-0.5">{rec.notes}</p>}
+                        <div className="text-right text-xs text-muted-foreground shrink-0">
+                          {rec.hoursWorked}h
+                          {rec.overtime > 0 && <span className="text-amber-500"> +{rec.overtime}OT</span>}
+                        </div>
+                        <button
+                          onClick={() => setDeleteTarget({ type: 'attendance', id: rec.id, name: `Attendance on ${rec.date} (${rec.status})` })}
+                          className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/10 transition-all"
+                        >
+                          <Trash2 size={11} className="text-rose-500" />
+                        </button>
                       </div>
-                      <div className="text-right text-xs text-muted-foreground shrink-0">
-                        {rec.hoursWorked}h
-                        {rec.overtime > 0 && <span className="text-amber-500"> +{rec.overtime}OT</span>}
-                      </div>
-                      <button
-                        onClick={() => setDeleteTarget({ type: 'attendance', id: rec.id, name: `Attendance on ${rec.date} (${rec.status})` })}
-                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-rose-500/10 transition-all"
-                      >
-                        <Trash2 size={11} className="text-rose-500" />
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+                <Pagination
+                  page={attPage}
+                  totalPages={totalAttPages}
+                  onPageChange={setAttPage}
+                  loading={loading}
+                />
+              </>
             )}
           </div>
         )}
@@ -1573,45 +1610,53 @@ function WorkerProfile({ worker, workers, attendance, advances, teams, projects,
             {workerAdvances.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-8">No advances or expenses recorded.</p>
             ) : (
-              <div className="space-y-2">
-                {workerAdvances.map((adv) => {
-                  const typeConfig = {
-                    advance: { label: "Advance", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" },
-                    expense: { label: "Expense", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10" },
-                    bonus: { label: "Bonus", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
-                  }[adv.type] || { label: adv.type, color: "text-muted-foreground", bg: "bg-muted" };
+              <>
+                <div className="space-y-2">
+                  {paginatedAdvances.map((adv) => {
+                    const typeConfig = {
+                      advance: { label: "Advance", color: "text-amber-600 dark:text-amber-400", bg: "bg-amber-500/10" },
+                      expense: { label: "Expense", color: "text-blue-600 dark:text-blue-400", bg: "bg-blue-500/10" },
+                      bonus: { label: "Bonus", color: "text-emerald-600 dark:text-emerald-400", bg: "bg-emerald-500/10" },
+                    }[adv.type] || { label: adv.type, color: "text-muted-foreground", bg: "bg-muted" };
 
-                  const statusConf = {
-                    pending: "bg-amber-500/10 text-amber-600",
-                    paid: "bg-emerald-500/10 text-emerald-600",
-                    deducted: "bg-blue-500/10 text-blue-600",
-                  }[adv.status] || "bg-muted text-muted-foreground";
+                    const statusConf = {
+                      pending: "bg-amber-500/10 text-amber-600",
+                      paid: "bg-emerald-500/10 text-emerald-600",
+                      deducted: "bg-blue-500/10 text-blue-600",
+                    }[adv.status] || "bg-muted text-muted-foreground";
 
-                  return (
-                    <div key={adv.id} className="flex items-start gap-3 bg-muted/40 hover:bg-muted/60 rounded-xl px-4 py-3 transition-colors group">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${typeConfig.bg} ${typeConfig.color}`}>{typeConfig.label}</span>
-                          <span className="text-xs font-bold text-foreground">{fmtCurrency(adv.amount)}</span>
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusConf}`}>{adv.status}</span>
+                    return (
+                      <div key={adv.id} className="flex items-start gap-3 bg-muted/40 hover:bg-muted/60 rounded-xl px-4 py-3 transition-colors group">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${typeConfig.bg} ${typeConfig.color}`}>{typeConfig.label}</span>
+                            <span className="text-xs font-bold text-foreground">{fmtCurrency(adv.amount)}</span>
+                            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${statusConf}`}>{adv.status}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{adv.description}</p>
+                          <p className="text-[10px] text-muted-foreground">{adv.date}</p>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-0.5">{adv.description}</p>
-                        <p className="text-[10px] text-muted-foreground">{adv.date}</p>
-                      </div>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
-                        {adv.status === "pending" && (
-                          <button onClick={() => updateAdvance(adv.id, { status: "deducted" })} className="px-2 py-1 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors whitespace-nowrap">
-                            Mark Deducted
+                        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity shrink-0">
+                          {adv.status === "pending" && (
+                            <button onClick={() => updateAdvance(adv.id, { status: "deducted" })} className="px-2 py-1 rounded text-[10px] font-semibold bg-blue-500/10 text-blue-600 hover:bg-blue-500/20 transition-colors whitespace-nowrap">
+                              Mark Deducted
+                            </button>
+                          )}
+                          <button onClick={() => setDeleteTarget({ type: 'advance', id: adv.id, name: `${adv.type} - ${useSettingsStore.getState().settings.currency || "SAR"} ${adv.amount} (${adv.description || 'No description'})` })} className="p-1 rounded hover:bg-rose-500/10">
+                            <Trash2 size={11} className="text-rose-500" />
                           </button>
-                        )}
-                        <button onClick={() => setDeleteTarget({ type: 'advance', id: adv.id, name: `${adv.type} - ${useSettingsStore.getState().settings.currency || "SAR"} ${adv.amount} (${adv.description || 'No description'})` })} className="p-1 rounded hover:bg-rose-500/10">
-                          <Trash2 size={11} className="text-rose-500" />
-                        </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
+                    );
+                  })}
+                </div>
+                <Pagination
+                  page={advPage}
+                  totalPages={totalAdvPages}
+                  onPageChange={setAdvPage}
+                  loading={loading}
+                />
+              </>
             )}
           </div>
         )}

@@ -9,9 +9,11 @@ import {
 } from "lucide-react";
 import useUserStore from "@/store/useUserStore";
 import useInvoiceStore from "@/store/useInvoiceStore";
+import useProjectStore from "@/store/useProjectStore";
 import { useCurrency } from "@/store/useSettingsStore";
 import GenerateInvoiceModal from "@/components/invoices/GenerateInvoiceModal";
 import { DeleteConfirmModal } from "@/components/ui/DeleteConfirmModal";
+import { Pagination } from "@/components/ui/Pagination";
 
 const STATUS_CONFIG = {
   draft:     { label: "Draft",     cls: "bg-muted text-muted-foreground border border-border",                         icon: FileText  },
@@ -38,17 +40,28 @@ export default function InvoicesPage() {
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
 
-  const { invoices, loading, loaded, fetchInvoices, deleteInvoice, updateInvoice } = useInvoiceStore();
+  const { invoices, pagination, loading, loaded, fetchInvoices, deleteInvoice, updateInvoice } = useInvoiceStore();
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [showGenerateModal, setShowGenerateModal] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [updatingId, setUpdatingId] = useState(null);
+  const [currentPage, setCurrentPage] = useState(1);
 
   useEffect(() => {
-    fetchInvoices(null, true);
-  }, [fetchInvoices]);
+    fetchProjects();
+  }, [fetchProjects]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setCurrentPage(1), 0);
+    return () => clearTimeout(timer);
+  }, [search, statusFilter]);
+
+  useEffect(() => {
+    fetchInvoices(null, true, currentPage, 10);
+  }, [fetchInvoices, currentPage]);
 
   const filtered = invoices.filter((inv) => {
     const q = search.toLowerCase();
@@ -234,6 +247,13 @@ export default function InvoicesPage() {
           </div>
         )}
       </div>
+
+      <Pagination
+        page={pagination?.page || 1}
+        totalPages={pagination?.totalPages || 1}
+        onPageChange={(p) => setCurrentPage(p)}
+        loading={loading}
+      />
 
       {/* Generate Modal */}
       {showGenerateModal && (

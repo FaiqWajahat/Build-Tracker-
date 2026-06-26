@@ -51,6 +51,7 @@ export async function GET() {
              a.overtime, a.location, a.notes, a.display_id, w.display_id as worker_display_id
       FROM attendance a
       JOIN workers w ON a.worker_id = w.id
+      WHERE a.date >= CURRENT_DATE - INTERVAL '15 days'
       ORDER BY a.date DESC, a.id DESC
     `);
 
@@ -60,6 +61,7 @@ export async function GET() {
              adv.status, adv.display_id, w.display_id as worker_display_id
       FROM advances adv
       JOIN workers w ON adv.worker_id = w.id
+      WHERE adv.date >= CURRENT_DATE - INTERVAL '15 days'
       ORDER BY adv.date DESC, adv.id DESC
     `);
 

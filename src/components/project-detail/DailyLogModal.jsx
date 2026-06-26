@@ -110,29 +110,32 @@ export default function DailyLogModal({ projectId, onClose, prefillUnitId = null
           c.name.toLowerCase() === selectedAssignment.assigneeName?.toLowerCase()
       );
 
-      setForm((f) => ({
-        ...f,
-        level:        selectedAssignment.level || "project",
-        assigneeType: selectedAssignment.assigneeType || "contractor",
-        assigneeId:   matchedAssignee?.id || selectedAssignment.assigneeId || "",
-        assigneeName: matchedAssignee?.name || selectedAssignment.assigneeName || "",
-        unitId:       selectedAssignment.level === "unit" ? (prefillUnitId || "") : "",
-        phaseId:      selectedAssignment.level === "phase" ? "" : "",
-      }));
+      const timer = setTimeout(() => {
+        setForm((f) => ({
+          ...f,
+          level:        selectedAssignment.level || "project",
+          assigneeType: selectedAssignment.assigneeType || "contractor",
+          assigneeId:   matchedAssignee?.id || selectedAssignment.assigneeId || "",
+          assigneeName: matchedAssignee?.name || selectedAssignment.assigneeName || "",
+          unitId:       selectedAssignment.level === "unit" ? (prefillUnitId || "") : "",
+          phaseId:      selectedAssignment.level === "phase" ? "" : "",
+        }));
+      }, 0);
+      return () => clearTimeout(timer);
     }
-  }, [selectedAssignment?.id, prefillUnitId, assigneeOptions.length]);
+  }, [selectedAssignment, prefillUnitId, assigneeOptions]);
 
   /* ── Running total — read from assignment breakdown (always in sync with DB) ── */
   const runningTotal = useMemo(() => {
     if (!selectedAssignment) return 0;
 
     // For unit-level: use the unitBreakdown.done for the selected unit
-    if (selectedAssignment.level === "unit" && form.unitId) {
+    if (form.level === "unit" && form.unitId) {
       const ub = (selectedAssignment.unitBreakdown || []).find((u) => u.unitId === form.unitId);
       return ub?.done ?? 0;
     }
     // For phase-level: use the phaseBreakdown.done for the selected phase
-    if (selectedAssignment.level === "phase" && form.phaseId) {
+    if (form.level === "phase" && form.phaseId) {
       const pb = (selectedAssignment.phaseBreakdown || []).find((p) => p.phaseId === form.phaseId);
       return pb?.done ?? 0;
     }

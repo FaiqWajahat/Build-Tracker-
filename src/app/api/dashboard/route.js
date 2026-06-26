@@ -20,13 +20,36 @@ export async function GET() {
     );
     const totalAssets = parseInt(assetsCountRes.rows[0]?.count || 0, 10);
 
-    const pendingInvoicesRes = await pool.query(
-      `SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total_amount 
-       FROM contractor_payments 
-       WHERE status = 'Pending Approval'`
+    // Check if the invoices table exists to avoid errors on clean DB setup
+    const tableCheck = await pool.query(
+      `SELECT EXISTS (
+         SELECT FROM information_schema.tables 
+         WHERE table_name = 'invoices'
+       )`
     );
-    const pendingInvoicesCount = parseInt(pendingInvoicesRes.rows[0]?.count || 0, 10);
-    const pendingInvoicesAmount = Number(pendingInvoicesRes.rows[0]?.total_amount || 0);
+    const invoicesTableExists = tableCheck.rows[0]?.exists;
+
+    let pendingInvoicesCount = 0;
+    let pendingInvoicesAmount = 0;
+
+    if (invoicesTableExists) {
+      const invoicesRes = await pool.query(
+        `SELECT i.id, i.retention_rate, i.vat_rate, COALESCE(SUM(li.current_amount), 0) as subtotal
+         FROM invoices i
+         LEFT JOIN invoice_line_items li ON i.id = li.invoice_id
+         WHERE i.status IN ('submitted', 'approved', 'overdue')
+         GROUP BY i.id`
+      );
+
+      pendingInvoicesCount = invoicesRes.rowCount;
+      pendingInvoicesAmount = invoicesRes.rows.reduce((sum, row) => {
+        const subtotal = Number(row.subtotal || 0);
+        const retention = subtotal * Number(row.retention_rate ?? 0.05);
+        const vat = (subtotal - retention) * Number(row.vat_rate ?? 0.15);
+        const grandTotal = subtotal - retention + vat;
+        return sum + grandTotal;
+      }, 0);
+    }
 
     // Check if attendance is marked for today
     const todayMarkedRes = await pool.query(

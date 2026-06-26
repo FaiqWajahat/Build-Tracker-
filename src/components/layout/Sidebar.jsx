@@ -29,7 +29,7 @@ export default function Sidebar() {
   // Close mobile drawer on route change
   useEffect(() => {
     closeMobile();
-  }, [pathname]);
+  }, [pathname, closeMobile]);
 
   const initials = currentUser?.name
     ? currentUser.name.split(" ").map(n => n[0]).join("").toUpperCase()
@@ -96,6 +96,7 @@ export default function Sidebar() {
           </div>
         ) : (
           <div className="flex items-center px-[18px] flex-1 min-w-0">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/logo.png"
               alt={companyName}

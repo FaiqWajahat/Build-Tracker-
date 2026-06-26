@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   TrendingDown, ShieldAlert, AlertCircle, Wrench,
   Search, Filter, Plus, FileDown, Eye, Trash2,
@@ -24,9 +24,12 @@ export default function DeductionsPage() {
   const currency = useCurrency();
   const contractors = useContractorStore((s) => s.contractors);
   const deductions = useContractorStore((s) => s.deductions);
+  const fetchContractorData = useContractorStore((s) => s.fetchContractorData);
+  const fetchDeductions = useContractorStore((s) => s.fetchDeductions);
   const addDeduction = useContractorStore((s) => s.addDeduction);
   const deleteDeduction = useContractorStore((s) => s.deleteDeduction);
   const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("All");
@@ -36,6 +39,12 @@ export default function DeductionsPage() {
 
   const loading = useContractorStore((s) => s.loading);
   const loaded = useContractorStore((s) => s.loaded);
+
+  useEffect(() => {
+    fetchContractorData();
+    fetchProjects();
+    fetchDeductions(null, 1, 100);
+  }, [fetchContractorData, fetchProjects, fetchDeductions]);
 
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";

@@ -129,7 +129,7 @@ export default function AuthProvider({ children }) {
           </form>
 
           {/* Quick logins for testing */}
-          <div className="border-t border-border/80 pt-4 flex flex-col gap-2.5">
+          {/* <div className="border-t border-border/80 pt-4 flex flex-col gap-2.5">
             <span className="text-[9px] font-bold text-muted-foreground uppercase tracking-widest text-center">Fast-Track Test Access</span>
             <div className="grid grid-cols-2 gap-2">
               <button
@@ -153,7 +153,7 @@ export default function AuthProvider({ children }) {
               <Lock size={10} />
               <span>Password: <code className="font-mono text-foreground font-semibold bg-muted/50 px-1 py-0.5 rounded border border-border">faiq@7007</code></span>
             </div>
-          </div>
+          </div> */}
         </div>
       </div>
     );

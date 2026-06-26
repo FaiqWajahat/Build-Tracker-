@@ -167,18 +167,24 @@ export default function AddProjectModal({ open, onClose }) {
   // Reset when modal opens
   useEffect(() => {
     if (open) {
-      setStep(1);
-      setDir(1);
-      setBasicInfo(INITIAL_BASIC_INFO);
-      setStructure({});
-      setScopes([]);
-      setSaving(false);
+      const timer = setTimeout(() => {
+        setStep(1);
+        setDir(1);
+        setBasicInfo(INITIAL_BASIC_INFO);
+        setStructure({});
+        setScopes([]);
+        setSaving(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [open]);
 
   // Reset structure when type/subtype changes
   useEffect(() => {
-    setStructure({});
+    const timer = setTimeout(() => {
+      setStructure({});
+    }, 0);
+    return () => clearTimeout(timer);
   }, [basicInfo.type, basicInfo.subtype]);
 
   function goNext() {

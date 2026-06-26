@@ -30,26 +30,34 @@ async function syncProjectData(projectId) {
 
 const useProgressStore = create((set, get) => ({
   logs: [],
+  pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
   loading: false,
   loaded: false,
   error: null,
 
   /* ── Fetch logs ─────────────────────────────────────────── */
-  fetchLogs: async (projectId = null, force = false) => {
-    if (get().loaded && !projectId && !force) return;
+  fetchLogs: async (projectId = null, force = false, page = 1, limit = 20) => {
     set({ loading: true });
     try {
-      const url = projectId
-        ? `/api/progress-logs?projectId=${projectId}`
-        : "/api/progress-logs";
-      const res = await axios.get(url);
+      let url = `/api/progress-logs?page=${page}&limit=${limit}`;
       if (projectId) {
-        set((state) => {
-          const others = state.logs.filter((l) => l.projectId !== projectId);
-          return { logs: [...others, ...res.data], error: null };
+        url += `&projectId=${projectId}`;
+      }
+      const res = await axios.get(url);
+      if (res.data && res.data.pagination) {
+        set({
+          logs: res.data.data,
+          pagination: res.data.pagination,
+          loaded: true,
+          error: null,
         });
       } else {
-        set({ logs: res.data, loaded: true, error: null });
+        set({
+          logs: Array.isArray(res.data) ? res.data : [],
+          pagination: { page: 1, limit: 500, total: Array.isArray(res.data) ? res.data.length : 0, totalPages: 1 },
+          loaded: true,
+          error: null,
+        });
       }
     } catch (err) {
       const msg = err.response?.data?.error || "Failed to load progress logs";

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Plus, X, Check, ChevronDown, ChevronUp, ChevronRight, Search, Layers,
   Home, FolderOpen, User, Trash2, AlertCircle,
   Building2, BarChart2, TrendingUp, DollarSign,
   Package, Zap, Droplets, Paintbrush, Activity,
-  Hash
+  Hash, Calendar, Users
 } from "lucide-react";
 import useAssignmentStore from "@/store/useAssignmentStore";
 import useProjectStore, { PHASE_COLORS } from "@/store/useProjectStore";
@@ -666,11 +667,16 @@ function AssignmentDetail({ assignment: a, project, logs, phases, units, compute
 
 /* ─── Assign Wizard ────────────────────────────────────────────────────── */
 function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptions = [], currency = "SAR", onClose, onSave }) {
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const [step, setStep] = useState(1);
   const [submitting, setSubmitting] = useState(false);
   const [expandedTrades, setExpandedTrades] = useState({});
-  const [expandedScopes, setExpandedScopes] = useState({});
   const [scopeSearch, setScopeSearch] = useState("");
+  const [bulkQtyVal, setBulkQtyVal] = useState("");
 
   const [form, setForm] = useState({
     level: "unit",
@@ -745,6 +751,20 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
       unitBreakdown: f.unitBreakdown.map((u) => ({ ...u, qty: Number(qty) })),
     }));
 
+  const clearAllUnits = () => {
+    setForm((f) => ({
+      ...f,
+      unitBreakdown: f.unitBreakdown.map((u) => ({ ...u, qty: 0 })),
+    }));
+    setBulkQtyVal("");
+  };
+
+  const addPresetQty = (delta) => {
+    const newVal = Math.max(0, (Number(bulkQtyVal) || 0) + delta);
+    setBulkQtyVal(newVal);
+    bulkFillUnits(newVal);
+  };
+
   const totalQtyPreview = form.level === "unit"
     ? (form.unitBreakdown || []).reduce((s, u) => s + (u.qty || 0), 0)
     : form.level === "phase"
@@ -780,73 +800,107 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
 
   const canProceed = form.scopeName && form.uom;
 
-  const STEPS = ["Select Scope", "Set Quantities", "Assign & Rate"];
+  const STEPS = [
+    { label: "Select Scope", desc: "Pick level & work scope" },
+    { label: "Set Quantities", desc: "Configure work breakdown" },
+    { label: "Assign & Rate", desc: "Assignee & rate cards" }
+  ];
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-      <div className="bg-card border border-border rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl">
+  const filledUnitsCount = (form.unitBreakdown || []).filter(u => u.qty > 0).length;
+
+  if (!mounted) return null;
+
+  return createPortal(
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+      <div className="bg-card border border-border rounded-2xl w-full max-w-3xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-150">
 
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-border shrink-0 bg-muted/20">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-xl bg-primary/10 flex items-center justify-center">
-              <Layers size={15} className="text-primary" />
+            <div className="w-10 h-10 rounded-xl bg-primary/10 flex items-center justify-center text-primary animate-pulse">
+              <Layers size={18} />
             </div>
             <div>
               <h3 className="text-sm font-bold text-foreground">Assign Scope to Project</h3>
-              <p className="text-[11px] text-muted-foreground">Step {step} of {STEPS.length} · {STEPS[step - 1]}</p>
+              <p className="text-[10.5px] text-muted-foreground mt-0.5">Project: <span className="font-bold text-foreground">{project?.name}</span></p>
             </div>
           </div>
-          <button onClick={onClose} disabled={submitting} className="p-2 rounded-lg hover:bg-muted cursor-pointer text-muted-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed">
+          <button 
+            onClick={onClose} 
+            disabled={submitting} 
+            className="p-1.5 rounded-lg hover:bg-muted cursor-pointer text-muted-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed border-none bg-transparent outline-none"
+          >
             <X size={16} />
           </button>
         </div>
 
-        {/* Step Indicators */}
-        <div className="flex items-center gap-0 px-6 pt-4 pb-3 shrink-0">
-          {STEPS.map((label, i) => {
-            const s = i + 1;
-            const active = step === s;
-            const done   = step > s;
-            return (
-              <div key={s} className="flex items-center flex-1">
-                <div className={`flex items-center gap-1.5 text-[11px] font-semibold ${active ? "text-primary" : done ? "text-emerald-500" : "text-muted-foreground"}`}>
-                  <div className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold
-                    ${active ? "bg-primary text-primary-foreground" : done ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground"}`}>
-                    {done ? <Check size={10} /> : s}
+        {/* Wizard Steps Progress Indicator */}
+        <div className="bg-muted/10 border-b border-border/60 px-6 py-4 shrink-0">
+          <div className="flex items-center justify-between">
+            {STEPS.map((stepItem, i) => {
+              const sNum = i + 1;
+              const active = step === sNum;
+              const done   = step > sNum;
+              return (
+                <div key={sNum} className="flex items-center flex-1 last:flex-initial">
+                  <div className="flex items-center gap-2.5">
+                    <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-all duration-300
+                      ${active 
+                        ? "bg-primary text-primary-foreground ring-4 ring-primary/15" 
+                        : done 
+                        ? "bg-emerald-500 text-white" 
+                        : "bg-muted text-muted-foreground border border-border"}`}>
+                      {done ? <Check size={12} className="stroke-[3]" /> : sNum}
+                    </div>
+                    <div className="hidden sm:block text-left">
+                      <p className={`text-[11px] font-bold leading-none ${active ? "text-primary font-extrabold" : done ? "text-emerald-500 font-bold" : "text-muted-foreground"}`}>
+                        {stepItem.label}
+                      </p>
+                      <p className="text-[9px] text-muted-foreground/75 mt-0.5">{stepItem.desc}</p>
+                    </div>
                   </div>
-                  <span className="hidden sm:block">{label}</span>
+                  {i < STEPS.length - 1 && (
+                    <div className="flex-1 mx-4 h-1 rounded-full bg-muted overflow-hidden">
+                      <div className={`h-full transition-all duration-300 ${done ? "bg-emerald-500 w-full" : active ? "bg-primary w-1/2" : "w-0"}`} />
+                    </div>
+                  )}
                 </div>
-                {i < STEPS.length - 1 && <div className={`flex-1 h-px mx-2 transition-all ${done ? "bg-emerald-500/40" : "bg-border"}`} />}
-              </div>
-            );
-          })}
+              );
+            })}
+          </div>
         </div>
 
         {/* Step Content */}
-        <div className="flex-1 overflow-y-auto px-6 pb-4 pt-2 space-y-4 min-h-0">
+        <div className="flex-1 overflow-y-auto px-6 py-5 space-y-4 min-h-0">
 
           {/* ── STEP 1: Select Scope + Level ──────────────────────── */}
           {step === 1 && (
-            <div className="space-y-4">
+            <div className="space-y-5 animate-in slide-in-from-right-3 duration-250">
 
               {/* Level picker */}
               <div>
-                <p className="text-xs font-bold text-foreground mb-2">Assignment Level</p>
-                <div className="grid grid-cols-3 gap-2">
+                <label className="text-[10px] uppercase font-extrabold text-muted-foreground tracking-wider block mb-2.5">1. Assignment Level</label>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   {Object.entries(LEVEL_INFO).map(([key, info]) => {
                     const Icon   = info.icon;
                     const active = form.level === key;
                     return (
                       <button
                         key={key}
+                        type="button"
                         onClick={() => setForm((f) => ({ ...f, level: key }))}
-                        className={`p-3 rounded-xl border text-left transition-all cursor-pointer
-                          ${active ? `${info.border} ${info.bg}` : "border-border bg-muted/30 hover:bg-muted/60"}`}
+                        className={`p-3.5 rounded-xl border text-left transition-all duration-200 cursor-pointer flex flex-col gap-1.5 hover:scale-[1.01] hover:shadow-sm
+                          ${active 
+                            ? `${info.border} ${info.bg} ring-1 ring-primary/10 shadow-xs` 
+                            : "border-border bg-card hover:bg-muted/40"}`}
                       >
-                        <Icon size={14} className={active ? info.color : "text-muted-foreground"} />
-                        <p className={`text-xs font-bold mt-1 ${active ? info.color : "text-foreground"}`}>{info.label}</p>
-                        <p className="text-[10px] text-muted-foreground mt-0.5 leading-tight">{info.desc}</p>
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? info.bg : "bg-muted"} ${active ? info.color : "text-muted-foreground"}`}>
+                          <Icon size={16} />
+                        </div>
+                        <div>
+                          <p className={`text-[12px] font-bold ${active ? info.color : "text-foreground"}`}>{info.label}</p>
+                          <p className="text-[9.5px] text-muted-foreground mt-0.5 leading-snug">{info.desc}</p>
+                        </div>
                       </button>
                     );
                   })}
@@ -854,83 +908,98 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
               </div>
 
               {/* Scope picker */}
-              <div>
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-xs font-bold text-foreground">Select Scope</p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] uppercase font-extrabold text-muted-foreground tracking-wider block">2. Select Scope</label>
                   {form.scopeName && (
-                    <div className="flex items-center gap-1 text-[10.5px] font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded-md">
-                      <Check size={10} />
-                      {form.scopeName}
-                    </div>
+                    <span className="text-[9.5px] font-bold px-2 py-0.5 bg-primary/10 text-primary border border-primary/20 rounded-md flex items-center gap-1">
+                      <Check size={10} className="stroke-[2.5]" />
+                      Selected: {form.scopeName}
+                    </span>
                   )}
                 </div>
+
                 {/* Search */}
-                <div className="relative mb-2">
-                  <Search size={11} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                <div className="relative">
+                  <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
                   <input
                     type="text"
-                    placeholder="Search scope..."
+                    placeholder="Search scopes or trade..."
                     value={scopeSearch}
                     onChange={(e) => setScopeSearch(e.target.value)}
-                    className="w-full pl-7 pr-2 py-1.5 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring"
+                    className="w-full pl-9 pr-8 py-2 bg-muted/60 text-xs text-foreground placeholder-muted-foreground/75 rounded-xl border border-border outline-none focus:border-primary transition-all focus:ring-1 focus:ring-primary"
                   />
+                  {scopeSearch && (
+                    <button 
+                      type="button" 
+                      onClick={() => setScopeSearch("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground bg-transparent border-none cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
                 </div>
 
                 {/* Scope tree */}
-                <div className="border border-border rounded-xl overflow-hidden max-h-[320px] overflow-y-auto">
+                <div className="border border-border rounded-xl bg-card overflow-hidden max-h-[220px] overflow-y-auto divide-y divide-border/40 shadow-inner">
                   {Object.keys(scopesByTrade).length === 0 ? (
-                    <div className="py-8 text-center text-xs text-muted-foreground">No scopes match your search</div>
+                    <div className="py-12 text-center text-xs text-muted-foreground flex flex-col items-center gap-1.5">
+                      <Layers size={20} className="opacity-20" />
+                      <span>No scopes match your search criteria</span>
+                    </div>
                   ) : (
                     Object.entries(scopesByTrade).map(([trade, tradeScopes]) => {
                       const tradeIcon = TRADE_ICONS[trade] || "🏗️";
                       const isTradeOpen = expandedTrades[trade] !== false; // default open
                       return (
-                        <div key={trade}>
+                        <div key={trade} className="bg-card">
                           {/* Trade header */}
                           <button
+                            type="button"
                             onClick={() => toggleTrade(trade)}
-                            className="w-full flex items-center gap-2 px-3 py-2 bg-muted/50 hover:bg-muted/80 transition-colors cursor-pointer sticky top-0 z-10"
+                            className="w-full flex items-center gap-2.5 px-3.5 py-2 bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer sticky top-0 z-10 border-b border-border/40"
                           >
-                            <span className="text-sm">{tradeIcon}</span>
-                            <p className="flex-1 text-left text-[10.5px] uppercase font-bold tracking-wider text-muted-foreground">{trade}</p>
-                            <span className="text-[10px] text-muted-foreground/60">{tradeScopes.length} scopes</span>
+                            <span className="text-xs">{tradeIcon}</span>
+                            <span className="flex-1 text-left text-[10px] uppercase font-bold tracking-wider text-muted-foreground">{trade}</span>
+                            <span className="text-[9.5px] font-semibold text-muted-foreground/60 bg-muted px-2 py-0.5 rounded-full">{tradeScopes.length}</span>
                             {isTradeOpen ? <ChevronUp size={12} className="text-muted-foreground" /> : <ChevronDown size={12} className="text-muted-foreground" />}
                           </button>
 
-                          {isTradeOpen && tradeScopes.map((scope) => {
-                            const scopeSelected = isSelected(scope.id);
-
-                            return (
-                              <div key={scope.id} className="border-t border-border/40">
-                                {/* Scope row */}
-                                <button
-                                  onClick={() => selectScope(scope)}
-                                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer transition-all
-                                    ${scopeSelected
-                                      ? "bg-primary/8 hover:bg-primary/10"
-                                      : "hover:bg-muted/40"}`}
-                                >
-                                  {/* Radio dot */}
-                                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                                    ${scopeSelected ? "border-primary bg-primary shadow-sm" : "border-border"}`}>
-                                    {scopeSelected && <div className="w-1.5 h-1.5 bg-primary-foreground rounded-full" />}
-                                  </div>
-                                  {/* Scope name */}
-                                  <span className={`text-xs font-semibold flex-1 truncate ${scopeSelected ? "text-primary" : "text-foreground"}`}>
-                                    {scope.name}
-                                  </span>
-                                  {/* UOM pill badge */}
-                                  <span className={`text-[9.5px] font-bold font-mono px-2 py-0.5 rounded-md shrink-0 transition-colors
-                                    ${scopeSelected
-                                      ? "bg-primary/15 text-primary border border-primary/25"
-                                      : "bg-muted text-muted-foreground border border-border/60"}`}>
-                                    {scope.uom}
-                                  </span>
-                                  {scopeSelected && <Check size={12} className="text-primary shrink-0" />}
-                                </button>
-                              </div>
-                            );
-                          })}
+                          {isTradeOpen && (
+                            <div className="divide-y divide-border/20">
+                              {tradeScopes.map((scope) => {
+                                const scopeSelected = isSelected(scope.id);
+                                return (
+                                  <button
+                                    key={scope.id}
+                                    type="button"
+                                    onClick={() => selectScope(scope)}
+                                    className={`w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer transition-all duration-150
+                                      ${scopeSelected
+                                        ? "bg-primary/5 hover:bg-primary/8 border-l-2 border-l-primary"
+                                        : "hover:bg-muted/20"}`}
+                                  >
+                                    {/* Radio dot */}
+                                    <div className={`w-4 h-4 rounded-full border flex items-center justify-center shrink-0 transition-all
+                                      ${scopeSelected ? "border-primary bg-primary shadow-2xs" : "border-border bg-muted/40"}`}>
+                                      {scopeSelected && <div className="w-1.5 h-1.5 bg-primary-foreground rounded-full" />}
+                                    </div>
+                                    {/* Scope name */}
+                                    <span className={`text-xs font-semibold flex-1 truncate ${scopeSelected ? "text-primary font-bold" : "text-foreground"}`}>
+                                      {scope.name}
+                                    </span>
+                                    {/* UOM badge */}
+                                    <span className={`text-[9.5px] font-bold font-mono px-2 py-0.5 rounded-md shrink-0 transition-colors border
+                                      ${scopeSelected
+                                        ? "bg-primary/10 text-primary border-primary/20"
+                                        : "bg-muted text-muted-foreground border-border/60"}`}>
+                                      {scope.uom}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })
@@ -940,38 +1009,41 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
 
               {/* Selected scope summary card */}
               {form.scopeName && (
-                <div className="animate-in fade-in slide-in-from-top-1 duration-200 space-y-3">
-                  {/* Summary card */}
-                  <div className="flex items-center gap-3 p-3.5 bg-primary/5 border border-primary/20 rounded-xl">
-                    <span className="text-2xl shrink-0">{form.tradeIcon}</span>
+                <div className="animate-in fade-in slide-in-from-top-2 duration-200 space-y-3.5">
+                  <div className="flex items-center gap-3.5 p-3.5 bg-primary/5 border border-primary/20 rounded-xl relative overflow-hidden shadow-2xs">
+                    <div className="absolute top-0 right-0 w-16 h-16 bg-primary/5 rounded-full -mr-6 -mt-6 blur-md pointer-events-none" />
+                    <span className="text-2xl shrink-0 p-1.5 bg-primary/10 rounded-lg">{form.tradeIcon}</span>
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs font-bold text-primary truncate">{form.scopeName}</p>
-                      <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">{form.trade}</p>
+                      <p className="text-[12.5px] font-extrabold text-foreground truncate">{form.scopeName}</p>
+                      <p className="text-[9.5px] text-muted-foreground mt-0.5 uppercase font-bold tracking-wider">{form.trade}</p>
                     </div>
-                    <div className="flex items-center gap-2 shrink-0">
-                      <div className="flex flex-col items-end gap-0.5">
-                        <span className="text-[9px] uppercase font-bold text-muted-foreground tracking-wider">UOM</span>
-                        <span className="text-[12px] font-black font-mono px-2.5 py-0.5 rounded-lg bg-card border border-border text-foreground shadow-sm">
+                    <div className="flex items-center gap-3 shrink-0 relative z-10">
+                      <div className="flex flex-col items-end">
+                        <span className="text-[8.5px] uppercase font-bold text-muted-foreground/80 tracking-wider">Unit (UOM)</span>
+                        <span className="text-[11px] font-black font-mono px-2.5 py-0.5 rounded-lg bg-card border border-border text-foreground shadow-2xs">
                           {form.uom}
                         </span>
                       </div>
                       <button
+                        type="button"
                         onClick={() => setForm((f) => ({ ...f, scopeId: '', scopeName: '', trade: '', tradeIcon: '🏗️', uom: '' }))}
                         title="Clear selection"
-                        className="p-1.5 rounded-lg hover:bg-rose-500/10 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer ml-1"
+                        className="p-1.5 rounded-lg hover:bg-rose-500/10 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer border-none bg-transparent"
                       >
-                        <X size={12} />
+                        <X size={13} />
                       </button>
                     </div>
                   </div>
+
                   {/* Scope name override */}
                   <div>
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Scope Name <span className="font-normal normal-case">(optional override)</span></label>
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider pl-1">Scope Name / Label Override</label>
                     <input
+                      type="text"
                       value={form.scopeName}
                       onChange={(e) => setForm((f) => ({ ...f, scopeName: e.target.value }))}
-                      placeholder="e.g. Ground Floor Slab"
-                      className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring"
+                      placeholder="e.g. Ground Floor Slab Casting"
+                      className="block mt-1 w-full px-3 py-2 bg-muted/50 text-xs text-foreground rounded-lg border border-border outline-none focus:border-primary focus:ring-1 focus:ring-primary font-medium"
                     />
                   </div>
                 </div>
@@ -981,182 +1053,241 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
 
           {/* ── STEP 2: Quantities ───────────────────────────────────── */}
           {step === 2 && (
-            <div className="space-y-4">
-              {/* Selected scope badge */}
-              <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${LEVEL_INFO[form.level]?.border} ${LEVEL_INFO[form.level]?.bg}`}>
-                <span className="text-xl">{form.tradeIcon}</span>
+            <div className="space-y-4 animate-in slide-in-from-right-3 duration-250">
+              
+              {/* Selected scope summary badge */}
+              <div className={`p-3.5 rounded-xl border flex items-center gap-3 ${LEVEL_INFO[form.level]?.border} ${LEVEL_INFO[form.level]?.bg} shadow-2xs`}>
+                <span className="text-2xl p-1 bg-card/60 rounded-lg">{form.tradeIcon}</span>
                 <div className="min-w-0">
-                  <p className={`text-xs font-bold ${LEVEL_INFO[form.level]?.color}`}>
+                  <p className={`text-xs font-extrabold ${LEVEL_INFO[form.level]?.color}`}>
                     {form.scopeName}
-                    {form.subScopeName && (
-                      <span className="font-normal text-muted-foreground"> → {form.subScopeName}</span>
-                    )}
                   </p>
-                  <p className="text-[10.5px] text-muted-foreground mt-0.5">
-                    {LEVEL_INFO[form.level]?.label} · {form.uom}
+                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                    Level: <span className="font-bold text-foreground">{LEVEL_INFO[form.level]?.label}</span> · UOM: <span className="font-bold text-foreground">{form.uom}</span>
                   </p>
                 </div>
               </div>
 
               {/* PROJECT LEVEL */}
               {form.level === "project" && (
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">
-                    Total Project Quantity ({form.uom})
+                <div className="space-y-2 animate-in zoom-in-95 duration-200">
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider pl-1 block">
+                    Total Contract Quantity
                   </label>
-                  <input
-                    type="number"
-                    value={form.totalQty}
-                    onChange={(e) => setForm((f) => ({ ...f, totalQty: e.target.value }))}
-                    placeholder="e.g. 1000"
-                    className="block mt-1 w-full px-3 py-2.5 bg-muted text-sm text-foreground rounded-lg border border-border outline-none focus:border-ring font-bold"
-                  />
-                  <p className="text-[10.5px] text-muted-foreground mt-2">
-                    Progress will be logged freely from any unit/area across the project.
+                  <div className="relative">
+                    <input
+                      type="number"
+                      value={form.totalQty}
+                      onChange={(e) => setForm((f) => ({ ...f, totalQty: e.target.value }))}
+                      placeholder="e.g. 1000"
+                      className="block w-full pl-3 pr-14 py-3 bg-muted/60 text-base font-extrabold text-foreground rounded-xl border border-border outline-none focus:border-primary transition-all focus:ring-1 focus:ring-primary"
+                    />
+                    <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-bold font-mono px-2 py-0.5 bg-card border border-border rounded-md text-muted-foreground shadow-2xs">
+                      {form.uom}
+                    </span>
+                  </div>
+                  <p className="text-[10px] text-muted-foreground leading-normal pl-1">
+                    At the Project level, you define a single dynamic pool of quantities. Progress updates can be logged directly against this pool from any workspace area.
                   </p>
                 </div>
               )}
 
               {/* PHASE LEVEL */}
               {form.level === "phase" && (
-                <div className="space-y-2">
+                <div className="space-y-3.5 animate-in zoom-in-95 duration-200">
                   <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-foreground">Quantity per Phase ({form.uom})</p>
+                    <p className="text-xs font-bold text-foreground">Specify Quantity per Phase</p>
                     {totalQtyPreview > 0 && (
-                      <span className="text-[10.5px] font-semibold text-muted-foreground">
-                        Total: <strong className="text-foreground">{totalQtyPreview.toLocaleString()} {form.uom}</strong>
+                      <span className="text-[10.5px] font-bold text-primary bg-primary/10 border border-primary/20 px-2.5 py-0.5 rounded-full">
+                        Total: {totalQtyPreview.toLocaleString()} {form.uom}
                       </span>
                     )}
                   </div>
-                  {phases.length === 0 && (
-                    <p className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">
-                      No phases defined. Go to Units tab to add phases first.
-                    </p>
-                  )}
-                  <div className="space-y-2">
-                    {(form.phaseBreakdown || []).map((pb) => {
-                      const phase = phases.find((ph) => ph.id === pb.phaseId);
-                      const col   = phase ? PHASE_COLORS.find((c) => c.id === phase.colorId) || PHASE_COLORS[0] : PHASE_COLORS[0];
-                      const unitCount = phase ? (phase.unitIds || []).length : 0;
-                      const perUnit   = pb.qty > 0 && unitCount > 0 ? (pb.qty / unitCount).toFixed(1) : 0;
-                      return (
-                        <div key={pb.phaseId} className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl">
-                          <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${col.dot}`} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-xs font-bold text-foreground">{pb.phaseName}</p>
-                            <p className="text-[10px] text-muted-foreground">
-                              {unitCount} units{perUnit > 0 ? ` · ${perUnit} ${form.uom}/unit (preview)` : ""}
-                            </p>
+                  
+                  {phases.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-muted-foreground bg-muted/30 border border-dashed border-border rounded-xl">
+                      No phases defined. Please configure project phases under the Units tab first.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto pr-1">
+                      {(form.phaseBreakdown || []).map((pb) => {
+                        const phase = phases.find((ph) => ph.id === pb.phaseId);
+                        const col   = phase ? PHASE_COLORS.find((c) => c.id === phase.colorId) || PHASE_COLORS[0] : PHASE_COLORS[0];
+                        const unitCount = phase ? (phase.unitIds || []).length : 0;
+                        const perUnit   = pb.qty > 0 && unitCount > 0 ? (pb.qty / unitCount).toFixed(1) : 0;
+                        return (
+                          <div key={pb.phaseId} className="flex items-center gap-3 p-3 bg-card border border-border rounded-xl hover:shadow-2xs transition-all">
+                            <div className={`w-2.5 h-2.5 rounded-full shrink-0 ${col.dot} shadow-inner`} />
+                            <div className="flex-1 min-w-0">
+                              <p className="text-xs font-bold text-foreground">{pb.phaseName}</p>
+                              <p className="text-[9.5px] text-muted-foreground">
+                                {unitCount} unit{unitCount !== 1 ? 's' : ''}{perUnit > 0 ? ` · avg ${perUnit} ${form.uom}/unit` : ""}
+                              </p>
+                            </div>
+                            <div className="relative shrink-0">
+                              <input
+                                type="number"
+                                value={pb.qty || ""}
+                                onChange={(e) => updatePhaseQty(pb.phaseId, e.target.value)}
+                                placeholder="Qty"
+                                className="w-28 pl-3 pr-10 py-1.5 bg-muted/50 text-xs text-foreground rounded-lg border border-border outline-none focus:border-primary text-right font-extrabold"
+                              />
+                              <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[9px] font-bold text-muted-foreground uppercase">{form.uom}</span>
+                            </div>
                           </div>
-                          <input
-                            type="number"
-                            value={pb.qty || ""}
-                            onChange={(e) => updatePhaseQty(pb.phaseId, e.target.value)}
-                            placeholder="Qty"
-                            className="w-24 px-2 py-1.5 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring text-right font-bold"
-                          />
-                          <span className="text-[10.5px] text-muted-foreground w-8">{form.uom}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        );
+                      })}
+                    </div>
+                  )}
                 </div>
               )}
 
               {/* UNIT LEVEL */}
               {form.level === "unit" && (
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <p className="text-xs font-bold text-foreground">Quantity per Unit ({form.uom})</p>
+                <div className="space-y-3.5 animate-in zoom-in-95 duration-200">
+                  
+                  {/* Bulk Fill controls card */}
+                  <div className="bg-muted/30 border border-border rounded-xl p-3 flex flex-wrap items-center justify-between gap-3 shadow-2xs">
                     <div className="flex items-center gap-2">
-                      <span className="text-[10.5px] text-muted-foreground">Fill all:</span>
-                      <input
-                        type="number"
-                        placeholder="qty"
-                        className="w-16 px-2 py-1 text-xs bg-muted border border-border rounded-lg outline-none focus:border-ring text-right text-foreground"
-                        onChange={(e) => e.target.value && bulkFillUnits(e.target.value)}
-                      />
+                      <span className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Bulk Fill:</span>
+                      <div className="relative">
+                        <input
+                          type="number"
+                          placeholder="e.g. 50"
+                          value={bulkQtyVal}
+                          onChange={(e) => {
+                            setBulkQtyVal(e.target.value);
+                            bulkFillUnits(e.target.value);
+                          }}
+                          className="w-20 pl-2 pr-6 py-1 bg-card text-xs text-foreground border border-border rounded-lg outline-none focus:border-primary font-bold text-right"
+                        />
+                        <span className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[8px] font-bold text-muted-foreground uppercase">{form.uom}</span>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[10, 50, 100].map((d) => (
+                          <button
+                            key={d}
+                            type="button"
+                            onClick={() => addPresetQty(d)}
+                            className="px-1.5 py-0.5 bg-card hover:bg-muted text-[9.5px] font-bold rounded border border-border text-foreground transition-all cursor-pointer"
+                          >
+                            +{d}
+                          </button>
+                        ))}
+                      </div>
                     </div>
+                    <button
+                      type="button"
+                      onClick={clearAllUnits}
+                      className="px-2.5 py-1 hover:bg-rose-500/10 text-rose-500 text-[10.5px] font-bold rounded-lg border border-rose-500/20 transition-all cursor-pointer bg-card"
+                    >
+                      Clear All
+                    </button>
                   </div>
-                  {units.length === 0 && (
-                    <p className="text-xs text-muted-foreground bg-muted/30 p-3 rounded-lg">
-                      No units defined. Go to Units tab to add villas/units first.
-                    </p>
-                  )}
-                  {/* Total */}
-                  {totalQtyPreview > 0 && (
-                    <p className="text-right text-xs text-muted-foreground font-semibold">
-                      Total: <strong className="text-foreground">{totalQtyPreview.toLocaleString()} {form.uom}</strong>
-                    </p>
-                  )}
-                  <div className="border border-border rounded-xl overflow-hidden max-h-[300px] overflow-y-auto divide-y divide-border/50">
-                    {/* Units grouped by phase */}
-                    {phases.map((phase) => {
-                      const col     = PHASE_COLORS.find((c) => c.id === phase.colorId) || PHASE_COLORS[0];
-                      const phUnits = units.filter((u) => u.phaseId === phase.id);
-                      if (phUnits.length === 0) return null;
-                      return (
-                        <div key={phase.id}>
-                          <div className={`px-3 py-1.5 ${col.bg} border-b border-border/40 flex items-center gap-2`}>
-                            <span className={`w-2 h-2 rounded-full ${col.dot}`} />
-                            <p className={`text-[9.5px] uppercase font-bold tracking-wider ${col.text}`}>{phase.name}</p>
-                            <span className={`text-[9px] ${col.text} opacity-60`}>· {phUnits.length} units</span>
-                          </div>
-                          {phUnits.map((unit) => {
-                            const ub = (form.unitBreakdown || []).find((u) => u.unitId === unit.id);
-                            return (
-                              <div key={unit.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/20 transition-colors">
-                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black shrink-0 ${col.bg} ${col.text}`}>
-                                  {unit.id}
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-[11.5px] font-semibold text-foreground">{unit.name}</p>
-                                  {unit.type && <p className="text-[10px] text-muted-foreground">{unit.type}</p>}
-                                </div>
-                                <input
-                                  type="number"
-                                  value={ub?.qty || ""}
-                                  onChange={(e) => updateUnitQty(unit.id, e.target.value)}
-                                  placeholder="0"
-                                  className="w-20 px-2 py-1 bg-card text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring text-right font-bold"
-                                />
-                                <span className="text-[10.5px] text-muted-foreground w-8">{form.uom}</span>
+
+                  {units.length === 0 ? (
+                    <div className="py-8 text-center text-xs text-muted-foreground bg-muted/30 border border-dashed border-border rounded-xl">
+                      No units defined. Please add units/villas under the Units tab first.
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider pl-1">Unit Breakdown</p>
+                        <span className="text-[10.5px] font-semibold text-muted-foreground">
+                          Filled: <strong className="text-foreground">{filledUnitsCount} / {units.length}</strong>
+                          {totalQtyPreview > 0 && <span> · Total: <strong className="text-primary font-bold">{totalQtyPreview.toLocaleString()} {form.uom}</strong></span>}
+                        </span>
+                      </div>
+
+                      <div className="border border-border rounded-xl overflow-hidden max-h-[190px] overflow-y-auto divide-y divide-border/40 shadow-inner bg-card">
+                        {/* Units grouped by phase */}
+                        {phases.map((phase) => {
+                          const col     = PHASE_COLORS.find((c) => c.id === phase.colorId) || PHASE_COLORS[0];
+                          const phUnits = units.filter((u) => u.phaseId === phase.id);
+                          if (phUnits.length === 0) return null;
+                          return (
+                            <div key={phase.id} className="bg-card">
+                              <div className={`px-3 py-1.5 ${col.bg} border-b border-border/40 flex items-center gap-2 sticky top-0 z-10`}>
+                                <span className={`w-1.5 h-1.5 rounded-full ${col.dot}`} />
+                                <p className={`text-[9px] uppercase font-extrabold tracking-wider ${col.text}`}>{phase.name}</p>
+                                <span className={`text-[9px] ${col.text} opacity-70 font-semibold`}>· {phUnits.length} units</span>
                               </div>
-                            );
-                          })}
-                        </div>
-                      );
-                    })}
-                    {/* Units with no phase */}
-                    {units.filter((u) => !u.phaseId || !phases.find((ph) => ph.id === u.phaseId)).map((unit) => {
-                      const ub = (form.unitBreakdown || []).find((u) => u.unitId === unit.id);
-                      return (
-                        <div key={unit.id} className="flex items-center gap-3 px-3 py-2.5 hover:bg-muted/20 transition-colors">
-                          <div className="w-7 h-7 rounded-lg flex items-center justify-center text-[9px] font-black shrink-0 bg-muted text-muted-foreground">
-                            {unit.id}
+                              <div className="divide-y divide-border/20">
+                                {phUnits.map((unit) => {
+                                  const ub = (form.unitBreakdown || []).find((u) => u.unitId === unit.id);
+                                  return (
+                                    <div key={unit.id} className="flex items-center gap-3 px-4 py-2 hover:bg-muted/10 transition-colors">
+                                      <div className={`w-8.5 h-7 rounded-md flex items-center justify-center text-[9px] font-black shrink-0 ${col.bg} ${col.text} border border-current/10`}>
+                                        {unit.id}
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="text-[11.5px] font-bold text-foreground truncate">{unit.name}</p>
+                                        {unit.type && <p className="text-[9.5px] text-muted-foreground mt-0.5">{unit.type}</p>}
+                                      </div>
+                                      <div className="relative shrink-0">
+                                        <input
+                                          type="number"
+                                          value={ub?.qty || ""}
+                                          onChange={(e) => updateUnitQty(unit.id, e.target.value)}
+                                          placeholder="0"
+                                          className="w-24 pl-2 pr-8 py-1 bg-muted/40 text-xs text-foreground rounded-lg border border-border outline-none focus:border-primary text-right font-bold"
+                                        />
+                                        <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-semibold text-muted-foreground uppercase">{form.uom}</span>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })}
+
+                        {/* Units with no phase */}
+                        {units.filter((u) => !u.phaseId || !phases.find((ph) => ph.id === u.phaseId)).length > 0 && (
+                          <div>
+                            <div className="px-3 py-1.5 bg-muted/40 border-b border-border/40 flex items-center gap-2 sticky top-0 z-10 text-muted-foreground">
+                              <span className="w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+                              <p className="text-[9px] uppercase font-extrabold tracking-wider">Unassigned Units</p>
+                            </div>
+                            <div className="divide-y divide-border/20">
+                              {units.filter((u) => !u.phaseId || !phases.find((ph) => ph.id === u.phaseId)).map((unit) => {
+                                const ub = (form.unitBreakdown || []).find((u) => u.unitId === unit.id);
+                                return (
+                                  <div key={unit.id} className="flex items-center gap-3 px-4 py-2 hover:bg-muted/10 transition-colors">
+                                    <div className="w-8.5 h-7 rounded-md flex items-center justify-center text-[9px] font-black shrink-0 bg-muted text-muted-foreground border border-border/60">
+                                      {unit.id}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="text-[11.5px] font-bold text-foreground truncate">{unit.name}</p>
+                                      {unit.type && <p className="text-[9.5px] text-muted-foreground mt-0.5">{unit.type}</p>}
+                                    </div>
+                                    <div className="relative shrink-0">
+                                      <input
+                                        type="number"
+                                        value={ub?.qty || ""}
+                                        onChange={(e) => updateUnitQty(unit.id, e.target.value)}
+                                        placeholder="0"
+                                        className="w-24 pl-2 pr-8 py-1 bg-muted/40 text-xs text-foreground rounded-lg border border-border outline-none focus:border-primary text-right font-bold"
+                                      />
+                                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-[8px] font-semibold text-muted-foreground uppercase">{form.uom}</span>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
                           </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-[11.5px] font-semibold text-foreground">{unit.name}</p>
-                            {unit.type && <p className="text-[10px] text-muted-foreground">{unit.type}</p>}
-                          </div>
-                          <input
-                            type="number"
-                            value={ub?.qty || ""}
-                            onChange={(e) => updateUnitQty(unit.id, e.target.value)}
-                            placeholder="0"
-                            className="w-20 px-2 py-1 bg-card text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring text-right font-bold"
-                          />
-                          <span className="text-[10.5px] text-muted-foreground w-8">{form.uom}</span>
-                        </div>
-                      );
-                    })}
-                  </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
+
+              {/* Validation Warning */}
               {totalQtyPreview <= 0 && (
-                <div className="mt-3 p-2.5 bg-rose-500/5 rounded-xl border border-rose-500/10 text-[10.5px] font-semibold text-rose-500 flex items-center gap-1.5 animate-in slide-in-from-top-1 duration-150">
-                  <AlertCircle size={12} className="shrink-0" />
-                  <span>A total quantity greater than 0 is required to proceed. Please configure your breakdown or total quantity.</span>
+                <div className="p-3 bg-rose-500/5 rounded-xl border border-rose-500/10 text-[10.5px] font-semibold text-rose-500 flex items-center gap-2 animate-in slide-in-from-top-1 duration-150">
+                  <AlertCircle size={13} className="shrink-0" />
+                  <span>A total scope quantity greater than 0 is required to proceed to the assignment step.</span>
                 </div>
               )}
             </div>
@@ -1164,57 +1295,76 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
 
           {/* ── STEP 3: Assign & Rate ─────────────────────────────── */}
           {step === 3 && (
-            <div className="space-y-4">
+            <div className="space-y-4.5 animate-in slide-in-from-right-3 duration-250">
+              
               {/* Rates */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5">
-                    <span>Client Rate ({currency} / {form.uom || "unit"})</span>
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5 pl-1">
+                    <span>Client Contract Rate</span>
                     <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="number"
-                    value={form.clientRate}
-                    onChange={(e) => setForm((f) => ({ ...f, clientRate: e.target.value }))}
-                    placeholder="e.g. 350"
-                    className={`block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm font-bold rounded-lg border outline-none focus:border-ring
-                      ${form.clientRate && Number(form.clientRate) <= 0 ? "border-rose-500/50" : "border-border"}`}
-                  />
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-muted-foreground">{currency}</span>
+                    <input
+                      type="number"
+                      value={form.clientRate}
+                      onChange={(e) => setForm((f) => ({ ...f, clientRate: e.target.value }))}
+                      placeholder="Rate charged to client"
+                      className={`block w-full pl-11 pr-16 py-2.5 bg-muted/50 text-foreground text-sm font-extrabold rounded-xl border outline-none focus:border-primary transition-all
+                        ${form.clientRate && Number(form.clientRate) <= 0 ? "border-rose-500/50 focus:ring-rose-500" : "border-border focus:ring-primary"}`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9.5px] font-bold text-muted-foreground uppercase">/ {form.uom || "unit"}</span>
+                  </div>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5">
-                    <span>Sub / Labour Rate ({currency} / {form.uom || "unit"})</span>
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5 pl-1">
+                    <span>Subcontractor Rate</span>
                     {form.assigneeType === "contractor" && <span className="text-rose-500">*</span>}
                   </label>
-                  <input
-                    type="number"
-                    value={form.subRate}
-                    onChange={(e) => setForm((f) => ({ ...f, subRate: e.target.value }))}
-                    placeholder={form.assigneeType === "contractor" ? "e.g. 280" : "optional"}
-                    className={`block mt-1 w-full px-3 py-2.5 bg-muted text-foreground text-sm rounded-lg border outline-none focus:border-ring
-                      ${form.assigneeType === "contractor" && (!form.subRate || Number(form.subRate) <= 0) ? "border-rose-500/50 font-medium" : "border-border font-bold"}`}
-                  />
+                  <div className="relative mt-1">
+                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[10.5px] font-bold text-muted-foreground">{currency}</span>
+                    <input
+                      type="number"
+                      value={form.subRate}
+                      onChange={(e) => setForm((f) => ({ ...f, subRate: e.target.value }))}
+                      placeholder={form.assigneeType === "contractor" ? "Rate paid to sub" : "Optional"}
+                      className={`block w-full pl-11 pr-16 py-2.5 bg-muted/50 text-foreground text-sm rounded-xl border outline-none focus:border-primary transition-all
+                        ${form.assigneeType === "contractor" && (!form.subRate || Number(form.subRate) <= 0) ? "border-rose-500/50 focus:ring-rose-500 font-medium" : "border-border focus:ring-primary font-extrabold"}`}
+                    />
+                    <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9.5px] font-bold text-muted-foreground uppercase">/ {form.uom || "unit"}</span>
+                  </div>
                 </div>
               </div>
 
               {/* Assignee */}
               <div>
-                <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5">
+                <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider flex items-center gap-0.5 pl-1 block mb-1">
                   <span>Assign To</span>
                   <span className="text-rose-500">*</span>
                 </label>
                 <div className="grid grid-cols-2 gap-2 mt-1 mb-2">
-                  {["contractor", "team"].map((type) => (
-                    <button
-                      key={type}
-                      type="button"
-                      onClick={() => setForm((f) => ({ ...f, assigneeType: type, assigneeId: "", assigneeName: "" }))}
-                      className={`py-2 px-3 rounded-lg border text-xs font-semibold cursor-pointer transition-all capitalize
-                        ${form.assigneeType === type ? "bg-primary/8 border-primary/30 text-primary font-bold shadow-sm" : "bg-muted border-border text-muted-foreground hover:bg-muted/80"}`}
-                    >
-                      {type === "contractor" ? "Contractor" : "Labour Team"}
-                    </button>
-                  ))}
+                  {[
+                    { type: "contractor", label: "Contractor", icon: Building2 },
+                    { type: "team", label: "Labour Team", icon: Users }
+                  ].map((item) => {
+                    const BtnIcon = item.icon;
+                    const active = form.assigneeType === item.type;
+                    return (
+                      <button
+                        key={item.type}
+                        type="button"
+                        onClick={() => setForm((f) => ({ ...f, assigneeType: item.type, assigneeId: "", assigneeName: "" }))}
+                        className={`py-2.5 px-3.5 rounded-xl border text-xs font-semibold cursor-pointer transition-all flex items-center justify-center gap-2
+                          ${active 
+                            ? "bg-primary/8 border-primary/30 text-primary font-bold shadow-2xs" 
+                            : "bg-muted border-border text-muted-foreground hover:bg-muted/80"}`}
+                      >
+                        <BtnIcon size={13} />
+                        {item.label}
+                      </button>
+                    );
+                  })}
                 </div>
                 <select
                   value={form.assigneeId}
@@ -1222,7 +1372,7 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
                     const c = assigneeOptions.find((x) => x.id === e.target.value);
                     setForm((f) => ({ ...f, assigneeId: e.target.value, assigneeName: c?.name || "" }));
                   }}
-                  className={`block w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border outline-none focus:border-ring cursor-pointer
+                  className={`block w-full px-3 py-2.5 bg-muted/50 text-xs text-foreground rounded-xl border outline-none focus:border-primary cursor-pointer transition-all
                     ${!form.assigneeId ? "border-rose-500/50" : "border-border"}`}
                 >
                   <option value="">Select {form.assigneeType === "contractor" ? "contractor" : "labour team"}...</option>
@@ -1232,24 +1382,32 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
                 </select>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              {/* Date & Icon */}
+              <div className="grid grid-cols-2 gap-3.5">
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Target Completion Date</label>
-                  <input
-                    type="date"
-                    value={form.targetDate}
-                    onChange={(e) => setForm((f) => ({ ...f, targetDate: e.target.value }))}
-                    className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring"
-                  />
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider pl-1">Target Completion Date</label>
+                  <div className="relative mt-1">
+                    <Calendar size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
+                    <input
+                      type="date"
+                      value={form.targetDate}
+                      onChange={(e) => setForm((f) => ({ ...f, targetDate: e.target.value }))}
+                      className="block w-full pl-9 pr-3 py-2 bg-muted/50 text-xs text-foreground rounded-xl border border-border outline-none focus:border-primary transition-all"
+                    />
+                  </div>
                 </div>
                 <div>
-                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Trade Icon</label>
-                  <div className="flex gap-1 mt-1 flex-wrap">
+                  <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider pl-1">Trade Icon</label>
+                  <div className="flex gap-1.5 mt-1 flex-wrap">
                     {["🏗️", "⚡", "🚰", "🎨", "🧱", "🔧", "🪵", "♨️", "🔥", "📡"].map((icon) => (
                       <button
                         key={icon}
+                        type="button"
                         onClick={() => setForm((f) => ({ ...f, tradeIcon: icon }))}
-                        className={`w-8 h-8 text-base rounded-lg cursor-pointer transition-all ${form.tradeIcon === icon ? "bg-primary/10 ring-1 ring-primary" : "bg-muted hover:bg-muted/80"}`}
+                        className={`w-7.5 h-7.5 text-sm rounded-lg cursor-pointer transition-all border border-transparent
+                          ${form.tradeIcon === icon 
+                            ? "bg-primary/10 border-primary/20 scale-105 ring-1 ring-primary/30" 
+                            : "bg-muted/70 hover:bg-muted"}`}
                       >
                         {icon}
                       </button>
@@ -1258,38 +1416,64 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
                 </div>
               </div>
 
+              {/* Notes */}
               <div>
-                <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Notes</label>
+                <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider pl-1">Notes</label>
                 <textarea
                   rows={2}
                   value={form.notes}
                   onChange={(e) => setForm((f) => ({ ...f, notes: e.target.value }))}
-                  placeholder="Any scope-specific notes..."
-                  className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring resize-none"
+                  placeholder="Enter scope-specific instructions or notes..."
+                  className="block mt-1 w-full px-3 py-2 bg-muted/50 text-xs text-foreground rounded-xl border border-border outline-none focus:border-primary resize-none"
                 />
               </div>
 
-              {/* Contract summary */}
+              {/* Contract summary card */}
               {form.clientRate && totalQtyPreview > 0 && (
-                <div className="p-4 bg-emerald-500/5 border border-emerald-500/15 rounded-xl space-y-1.5">
-                  <p className="text-[10px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">Contract Summary</p>
-                  <p className="text-xs text-foreground font-semibold">
-                    {form.scopeName}
-                    {form.subScopeName && <span className="text-muted-foreground font-normal"> → {form.subScopeName}</span>}
-                    <span className="text-muted-foreground font-normal"> · {LEVEL_INFO[form.level]?.label}</span>
-                  </p>
-                  <p className="text-sm font-bold text-foreground">
-                    {totalQtyPreview.toLocaleString()} {form.uom} × {currency} {form.clientRate}
-                    {" = "}
-                    <span className="text-emerald-600 dark:text-emerald-400">
-                      {currency} {(totalQtyPreview * Number(form.clientRate)).toLocaleString()}
-                    </span>
-                  </p>
-                  {form.subRate && (
-                    <p className="text-[11px] text-muted-foreground">
-                      Margin: {currency} {((Number(form.clientRate) - Number(form.subRate)) * totalQtyPreview).toLocaleString()}
-                    </p>
-                  )}
+                <div className="p-4 bg-emerald-500/5 border border-dashed border-emerald-500/25 rounded-xl space-y-2 relative overflow-hidden animate-in fade-in duration-200">
+                  <div className="absolute top-0 right-0 w-24 h-24 bg-emerald-500/5 rounded-full -mr-8 -mt-8 blur-md pointer-events-none" />
+                  
+                  <div className="flex justify-between items-start">
+                    <div>
+                      <p className="text-[9.5px] uppercase font-bold text-emerald-600 dark:text-emerald-400 tracking-wider">Work Assignment Summary</p>
+                      <p className="text-xs text-foreground font-bold mt-0.5">
+                        {form.scopeName}
+                        <span className="text-muted-foreground font-normal"> · {LEVEL_INFO[form.level]?.label}</span>
+                      </p>
+                    </div>
+                    <span className="text-[8.5px] uppercase font-extrabold text-emerald-600 bg-emerald-500/10 border border-emerald-500/25 px-2 py-0.5 rounded-md">Ready to Assign</span>
+                  </div>
+
+                  <div className="pt-1.5 border-t border-emerald-500/10 grid grid-cols-2 gap-2 text-xs">
+                    <div>
+                      <span className="text-muted-foreground">Contract Quantity:</span>
+                      <p className="font-bold text-foreground font-mono mt-0.5">{totalQtyPreview.toLocaleString()} {form.uom}</p>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground">Client Rate:</span>
+                      <p className="font-bold text-foreground mt-0.5">{currency} {Number(form.clientRate).toLocaleString()}</p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2 border-t border-emerald-500/10 flex flex-wrap justify-between items-baseline gap-2">
+                    <div>
+                      <span className="text-[10px] text-muted-foreground">Gross Value:</span>
+                      <p className="text-base font-black text-emerald-600 dark:text-emerald-400">
+                        {currency} {(totalQtyPreview * Number(form.clientRate)).toLocaleString()}
+                      </p>
+                    </div>
+                    {form.assigneeType === "contractor" && form.subRate && (
+                      <div className="text-right">
+                        <span className="text-[9.5px] text-muted-foreground">Estimated Net Profit Margin:</span>
+                        <p className="text-[12.5px] font-extrabold text-primary">
+                          {currency} {((Number(form.clientRate) - Number(form.subRate)) * totalQtyPreview).toLocaleString()}
+                          <span className="text-[10.5px] font-semibold text-muted-foreground ml-1">
+                            ({((Number(form.clientRate) - Number(form.subRate)) / Number(form.clientRate) * 100).toFixed(0)}% Margin)
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>
@@ -1299,38 +1483,41 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
         {/* Navigation Footer */}
         <div className="flex items-center justify-between px-6 py-4 border-t border-border bg-muted/20 shrink-0">
           <button
+            type="button"
             onClick={step === 1 ? onClose : () => setStep((s) => s - 1)}
             disabled={submitting}
-            className="px-4 py-2 text-xs font-semibold text-muted-foreground bg-muted hover:bg-muted/80 rounded-xl cursor-pointer transition-all border border-border disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 text-xs font-bold text-muted-foreground bg-card hover:bg-muted/40 rounded-xl cursor-pointer transition-all border border-border disabled:opacity-50 disabled:cursor-not-allowed shadow-2xs"
           >
             {step === 1 ? "Cancel" : "← Back"}
           </button>
           <div className="flex gap-2">
             {step < 3 ? (
               <button
+                type="button"
                 onClick={() => setStep((s) => s + 1)}
                 disabled={
                   (step === 1 && !canProceed) ||
                   (step === 2 && totalQtyPreview <= 0)
                 }
-                className="px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/90 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all"
+                className="px-5 py-2 text-xs font-bold bg-primary text-primary-foreground rounded-xl hover:bg-primary/95 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all shadow-xs"
               >
-                Next →
+                Next Step →
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleSave}
                 disabled={!form.scopeName || !form.uom || !isStep3Valid || submitting}
-                className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5"
+                className="px-5 py-2 text-xs font-bold bg-emerald-600 text-white rounded-xl hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-all flex items-center gap-1.5 shadow-xs"
               >
                 {submitting ? (
                   <>
-                    <span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     <span>Assigning...</span>
                   </>
                 ) : (
                   <>
-                    <Check size={13} /> Save Assignment
+                    <Check size={13} className="stroke-[2.5]" /> Save Assignment
                   </>
                 )}
               </button>
@@ -1338,7 +1525,8 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 

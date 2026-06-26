@@ -74,6 +74,7 @@ export default function InvoiceDetailPage() {
   const [saving, setSaving] = useState(false);
   const [downloading, setDownloading] = useState(false);
   const [draft, setDraft] = useState(null);
+  const [retentionInput, setRetentionInput] = useState("");
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -85,10 +86,23 @@ export default function InvoiceDetailPage() {
     finally { setLoading(false); }
   }, [id, fetchInvoice]);
 
-  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      load();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [load]);
 
-  const startEdit = () => { setDraft(JSON.parse(JSON.stringify(invoice))); setIsEditing(true); };
-  const cancelEdit = () => { setDraft(JSON.parse(JSON.stringify(invoice))); setIsEditing(false); };
+  const startEdit = () => {
+    setDraft(JSON.parse(JSON.stringify(invoice)));
+    setRetentionInput(invoice ? (Number(invoice.retentionRate || 0) * 100).toString() : "");
+    setIsEditing(true);
+  };
+  const cancelEdit = () => {
+    setDraft(JSON.parse(JSON.stringify(invoice)));
+    setRetentionInput(invoice ? (Number(invoice.retentionRate || 0) * 100).toString() : "");
+    setIsEditing(false);
+  };
   const setField = (key, val) => setDraft((d) => ({ ...d, [key]: val }));
 
   const setLineItem = (idx, key, val) => {
@@ -121,7 +135,7 @@ export default function InvoiceDetailPage() {
     if (!inv) return {};
     const subtotal = (inv.lineItems || []).reduce((s, li) => s + Number(li.currentAmount || 0), 0);
     const retentionRate = Number(inv.retentionRate || 0.05);
-    const vatRate = Number(inv.vatRate || 0.15);
+    const vatRate = 0;
     const retention = subtotal * retentionRate;
     const netAfterRetention = subtotal - retention;
     const vat = netAfterRetention * vatRate;
@@ -334,7 +348,6 @@ export default function InvoiceDetailPage() {
         { label: "Subtotal (This Period)", value: mny(summary.subtotal), bold: false, color: [...DARK] },
         { label: `Retention (${pctStr(inv.retentionRate)})`, value: `- ${mny(summary.retention)}`, bold: false, color: [...ROSE] },
         { label: "Net After Retention",    value: mny(summary.netAfterRetention), bold: true, color: [...DARK] },
-        { label: `VAT (${pctStr(inv.vatRate)})`, value: mny(summary.vat), bold: false, color: [...DARK] },
       ];
 
       summaryRows.forEach((row, i) => {
@@ -350,7 +363,7 @@ export default function InvoiceDetailPage() {
       // Grand Total banner
       fillRect(sumX - 2, y, sumW + 2, 13, ...DARK);
       txt("TOTAL DUE", sumX + 2, y + 5, 6.5, ...GOLD, "bold");
-      txt(`${currency} — Including VAT`, sumX + 2, y + 9.5, 6, 148, 163, 184);
+      txt(currency, sumX + 2, y + 9.5, 6, 148, 163, 184);
       txt(mny(summary.grandTotal), sumRX - 2, y + 8.5, 12, ...WHITE, "bold", "right");
 
       // Notes
@@ -813,8 +826,13 @@ export default function InvoiceDetailPage() {
                     <span>Retention</span>
                     {isEditing ? (
                       <div className="flex items-center gap-0.5">
-                        <input type="number" value={(Number(draft.retentionRate || 0) * 100).toFixed(1)}
-                          onChange={(e) => setField("retentionRate", parseFloat(e.target.value || 0) / 100)}
+                        <input type="number" value={retentionInput}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setRetentionInput(val);
+                            const parsed = parseFloat(val);
+                            setField("retentionRate", isNaN(parsed) ? 0 : parsed / 100);
+                          }}
                           className="w-12 border border-slate-200 rounded px-1 text-xs outline-none text-center" />
                         <span className="text-[10px]">%</span>
                       </div>
@@ -827,28 +845,12 @@ export default function InvoiceDetailPage() {
                 <div className="flex justify-between text-xs font-bold text-slate-800 py-2 border-t border-slate-100">
                   <span>Net After Retention</span><span>{fmtMoney(summary.netAfterRetention, currency)}</span>
                 </div>
-                <div className="flex justify-between text-xs text-slate-600 items-center">
-                  <div className="flex items-center gap-2">
-                    <span>VAT</span>
-                    {isEditing ? (
-                      <div className="flex items-center gap-0.5">
-                        <input type="number" value={(Number(draft.vatRate || 0) * 100).toFixed(1)}
-                          onChange={(e) => setField("vatRate", parseFloat(e.target.value || 0) / 100)}
-                          className="w-12 border border-slate-200 rounded px-1 text-xs outline-none text-center" />
-                        <span className="text-[10px]">%</span>
-                      </div>
-                    ) : (
-                      <span className="text-[10px] bg-slate-100 px-1.5 py-0.5 rounded-full font-bold">{pctStr(display.vatRate)}</span>
-                    )}
-                  </div>
-                  <span className="font-semibold">{fmtMoney(summary.vat, currency)}</span>
-                </div>
               </div>
               <div className="mt-4 rounded-xl px-5 py-4" style={{ background: "linear-gradient(135deg, #0f172a, #1e293b)" }}>
                 <div className="flex justify-between items-center">
                   <div>
                     <p className="text-[#c4b19c] text-[8px] font-black uppercase tracking-widest">Total Due</p>
-                    <p className="text-white/50 text-[9px] mt-0.5">{currency} — Including VAT</p>
+                    <p className="text-white/50 text-[9px] mt-0.5">{currency}</p>
                   </div>
                   <p className="text-white font-black text-xl tracking-tight">{fmtMoney(summary.grandTotal, currency)}</p>
                 </div>

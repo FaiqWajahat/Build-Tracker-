@@ -97,3 +97,84 @@ export async function POST(request) {
     );
   }
 }
+
+// GET: Retrieve contractor payments with pagination
+export async function GET(request) {
+  try {
+    const { searchParams } = request.nextUrl;
+    const contractorIdParam = searchParams.get("contractorId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
+
+    const conditions = [];
+    const values = [];
+
+    if (contractorIdParam) {
+      const intId = parseInt(contractorIdParam.replace("CON-", ""), 10);
+      if (!isNaN(intId)) {
+        values.push(intId);
+        conditions.push(`p.contractor_id = $${values.length}`);
+      }
+    }
+
+    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+
+    let paymentsRes;
+    let pagination = null;
+
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 10));
+      const offset = (page - 1) * limit;
+
+      const countRes = await pool.query(
+        `SELECT COUNT(*) FROM contractor_payments p ${whereClause}`,
+        values
+      );
+      const total = parseInt(countRes.rows[0].count, 10);
+      const totalPages = Math.ceil(total / limit);
+      pagination = { page, limit, total, totalPages };
+
+      paymentsRes = await pool.query(
+        `SELECT p.*, c.name as contractor_name 
+         FROM contractor_payments p 
+         JOIN contractors c ON p.contractor_id = c.id 
+         ${whereClause}
+         ORDER BY p.date DESC, p.id DESC
+         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, limit, offset]
+      );
+    } else {
+      paymentsRes = await pool.query(
+        `SELECT p.*, c.name as contractor_name 
+         FROM contractor_payments p 
+         JOIN contractors c ON p.contractor_id = c.id 
+         ${whereClause}
+         ORDER BY p.date DESC, p.id DESC
+         LIMIT 500`,
+        values
+      );
+    }
+
+    const formatted = paymentsRes.rows.map((row) => ({
+      id: row.display_id,
+      subcontractor: row.contractor_name,
+      project: row.project,
+      amount: Number(row.amount),
+      date: formatDate(row.date),
+      channel: row.channel,
+      status: row.status,
+    }));
+
+    if (pagination) {
+      return NextResponse.json({ data: formatted, pagination });
+    }
+    return NextResponse.json(formatted);
+  } catch (error) {
+    console.error("GET /api/contractors/payments error:", error);
+    return NextResponse.json(
+      { error: "Internal Server Error" },
+      { status: 500 }
+    );
+  }
+}

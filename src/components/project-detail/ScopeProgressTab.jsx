@@ -26,8 +26,8 @@ export default function ScopeProgressTab({ projectId }) {
   const [selectedScope, setSelectedScope] = useState(null);
   const [viewMode, setViewMode] = useState("scope"); // "scope" | "unit" | "contractor"
 
-  const phases = project?.phases || [];
-  const units = project?.units || [];
+  const phases = useMemo(() => project?.phases || [], [project?.phases]);
+  const units = useMemo(() => project?.units || [], [project?.units]);
 
   const getPhaseColor = (colorId) => PHASE_COLORS.find((c) => c.id === colorId) || PHASE_COLORS[0];
 

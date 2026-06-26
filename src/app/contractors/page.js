@@ -34,6 +34,12 @@ export default function ContractorsPage() {
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
 
+  const [nav, setNav] = useState({ view: "directory", contractor: null, projectGroup: null });
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [addForm, setAddForm] = useState({
+    name: "", trade: "Civil & Structural", status: "Active", email: "", phone: "",
+  });
+
   useEffect(() => {
     fetchContractorData();
     fetchProjects(true);
@@ -48,17 +54,14 @@ export default function ContractorsPage() {
       if (contractorId) {
         const found = contractors.find(c => c.id === contractorId || c.display_id === contractorId);
         if (found) {
-          setNav({ view: "projects", contractor: found, projectGroup: null });
+          const timer = setTimeout(() => {
+            setNav({ view: "projects", contractor: found, projectGroup: null });
+          }, 0);
+          return () => clearTimeout(timer);
         }
       }
     }
   }, [contractors]);
-
-  const [nav, setNav] = useState({ view: "directory", contractor: null, projectGroup: null });
-  const [showAddModal, setShowAddModal] = useState(false);
-  const [addForm, setAddForm] = useState({
-    name: "", trade: "Civil & Structural", status: "Active", email: "", phone: "",
-  });
 
   const goToDirectory = () => setNav({ view: "directory", contractor: null, projectGroup: null });
   const goToContractor = (contractor) => setNav({ view: "projects", contractor, projectGroup: null });

@@ -6,20 +6,30 @@ import { toast } from "react-hot-toast";
 
 const useInvoiceStore = create((set, get) => ({
   invoices: [],
+  pagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
   loading: false,
   loaded: false,
   error: null,
 
   /* ── Fetch invoices ──────────────────────────────────────── */
-  fetchInvoices: async (projectId = null, force = false) => {
-    if (get().loaded && !force && !projectId) return;
+  fetchInvoices: async (projectId = null, force = false, page = 1, limit = 10) => {
     set({ loading: true });
     try {
-      const url = projectId
-        ? `/api/invoices?projectId=${projectId}`
-        : "/api/invoices";
+      let url = `/api/invoices?page=${page}&limit=${limit}`;
+      if (projectId) {
+        url += `&projectId=${projectId}`;
+      }
       const res = await axios.get(url);
-      set({ invoices: res.data, loaded: true, error: null });
+      if (res.data && res.data.pagination) {
+        set({ invoices: res.data.data, pagination: res.data.pagination, loaded: true, error: null });
+      } else {
+        set({
+          invoices: Array.isArray(res.data) ? res.data : [],
+          pagination: { page: 1, limit: 500, total: Array.isArray(res.data) ? res.data.length : 0, totalPages: 1 },
+          loaded: true,
+          error: null
+        });
+      }
     } catch (err) {
       const msg = err.response?.data?.error || "Failed to load invoices";
       set({ error: msg });

@@ -224,7 +224,8 @@ function AssetProfileModal({ asset, onClose, projectName, operatorName }) {
 
 export default function AssetsPage() {
   const { assets, addAsset, updateAsset, deleteAsset, fetchAssetData, loading, loaded } = useAssetStore();
-  const { projects } = useProjectStore();
+  const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
   const { workers, fetchLabourData } = useLabourStore();
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
@@ -232,7 +233,8 @@ export default function AssetsPage() {
   useEffect(() => {
     fetchLabourData();
     fetchAssetData();
-  }, [fetchLabourData, fetchAssetData]);
+    fetchProjects();
+  }, [fetchLabourData, fetchAssetData, fetchProjects]);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");

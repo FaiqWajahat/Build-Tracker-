@@ -9,23 +9,11 @@ const formatDate = (dateVal) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 };
 
-// GET: Unified payload of contractors, deductions, and payments
+// GET: Unified payload of contractors (optimized to exclude all historical payments & deductions)
 export async function GET() {
   try {
     const contractorsRes = await pool.query(
       `SELECT * FROM contractors ORDER BY name ASC`
-    );
-    const deductionsRes = await pool.query(
-      `SELECT d.*, c.display_id as contractor_display_id, c.name as contractor_name 
-       FROM contractor_deductions d 
-       JOIN contractors c ON d.contractor_id = c.id 
-       ORDER BY d.date DESC`
-    );
-    const paymentsRes = await pool.query(
-      `SELECT p.*, c.name as contractor_name 
-       FROM contractor_payments p 
-       JOIN contractors c ON p.contractor_id = c.id 
-       ORDER BY p.date DESC`
     );
 
     const contractors = contractorsRes.rows.map((row) => ({
@@ -38,29 +26,7 @@ export async function GET() {
       phone: row.phone,
     }));
 
-    const deductions = deductionsRes.rows.map((row) => ({
-      id: row.display_id,
-      contractorId: row.contractor_display_id,
-      contractorName: row.contractor_name,
-      site: row.site,
-      amount: Number(row.amount),
-      category: row.category,
-      date: formatDate(row.date),
-      approvedBy: row.approved_by,
-      description: row.description,
-    }));
-
-    const payments = paymentsRes.rows.map((row) => ({
-      id: row.display_id,
-      subcontractor: row.contractor_name,
-      project: row.project,
-      amount: Number(row.amount),
-      date: formatDate(row.date),
-      channel: row.channel,
-      status: row.status,
-    }));
-
-    return NextResponse.json({ contractors, deductions, payments });
+    return NextResponse.json({ contractors, deductions: [], payments: [] });
   } catch (error) {
     console.error("GET /api/contractors error:", error);
     return NextResponse.json(

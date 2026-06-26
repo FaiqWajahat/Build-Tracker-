@@ -1009,10 +1009,12 @@ function ReportView({ workers, attendance, projects }) {
   const toDate = `${year}-${monthStr}-${String(lastDay).padStart(2, "0")}`;
 
   // Build calendar days
-  const daysInMonth = Array.from({ length: lastDay }, (_, i) => {
-    const d = String(i + 1).padStart(2, "0");
-    return `${year}-${monthStr}-${d}`;
-  });
+  const daysInMonth = useMemo(() => {
+    return Array.from({ length: lastDay }, (_, i) => {
+      const d = String(i + 1).padStart(2, "0");
+      return `${year}-${monthStr}-${d}`;
+    });
+  }, [year, monthStr, lastDay]);
 
   const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 
@@ -1044,7 +1046,7 @@ function ReportView({ workers, attendance, projects }) {
 
       return { worker: w, present, absent, halfDay, leave, totalH, totalOT, payable, attRate, recs };
     });
-  }, [activeWorkers, attendance, fromDate, toDate, projectFilter]);
+  }, [activeWorkers, attendance, fromDate, toDate, projectFilter, calculatePayable, daysInMonth]);
 
   const totalPayroll = report.reduce((s, r) => s + r.payable, 0);
   const avgAttRate = report.length > 0 ? Math.round(report.reduce((s, r) => s + r.attRate, 0) / report.length) : 0;
@@ -1197,7 +1199,8 @@ function ReportView({ workers, attendance, projects }) {
 /* ─── Main Attendance Page ──────────────────────────────────────────────── */
 export default function AttendancePage() {
   const { workers, attendance, teams, fetchLabourData, loading, loaded } = useLabourStore();
-  const { projects } = useProjectStore();
+  const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
   const [date, setDate] = useState(todayStr());
@@ -1205,7 +1208,8 @@ export default function AttendancePage() {
 
   useEffect(() => {
     fetchLabourData();
-  }, [fetchLabourData]);
+    fetchProjects();
+  }, [fetchLabourData, fetchProjects]);
 
   const VIEWS = [
     { key: "daily",  label: "Daily Roll Call", icon: UserCheck },

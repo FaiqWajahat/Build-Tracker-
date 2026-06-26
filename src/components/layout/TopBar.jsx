@@ -199,8 +199,10 @@ export default function TopBar() {
   // Debounced Search Effect
   useEffect(() => {
     if (!searchQuery.trim()) {
-      setSearchResults({ workers: [], contractors: [], teams: [] });
-      return;
+      const timer = setTimeout(() => {
+        setSearchResults({ workers: [], contractors: [], teams: [] });
+      }, 0);
+      return () => clearTimeout(timer);
     }
 
     const delayDebounce = setTimeout(async () => {
@@ -498,9 +500,9 @@ export default function TopBar() {
                    (!searchResults.workers || searchResults.workers.length === 0) &&
                    (!searchResults.contractors || searchResults.contractors.length === 0) &&
                    (!searchResults.teams || searchResults.teams.length === 0) && (
-                    <div className="text-center py-6 text-muted-foreground text-[11.5px]">
-                      No matches found for "{searchQuery}"
-                    </div>
+                     <div className="text-center py-6 text-muted-foreground text-[11.5px]">
+                       No matches found for &quot;{searchQuery}&quot;
+                     </div>
                   )}
                 </div>
               )}

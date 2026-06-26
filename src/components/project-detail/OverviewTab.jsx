@@ -34,8 +34,8 @@ export default function OverviewTab({ projectId }) {
   const assignments = useMemo(() => allAssignments.filter((a) => a.projectId === projectId), [allAssignments, projectId]);
   const logs = useMemo(() => allLogs.filter((l) => l.projectId === projectId), [allLogs, projectId]);
 
-  const phases = project?.phases || [];
-  const units = project?.units || [];
+  const phases = useMemo(() => project?.phases || [], [project?.phases]);
+  const units = useMemo(() => project?.units || [], [project?.units]);
 
   const getPhaseColor = (colorId) => PHASE_COLORS.find((c) => c.id === colorId) || PHASE_COLORS[0];
 

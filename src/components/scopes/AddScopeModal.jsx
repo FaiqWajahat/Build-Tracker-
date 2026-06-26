@@ -58,9 +58,12 @@ export default function AddScopeModal({ open, onClose, editScope = null }) {
 
   useEffect(() => {
     if (open) {
-      setForm(editScope ? { ...editScope } : EMPTY_SCOPE);
-      setErrors({});
-      setSaving(false);
+      const timer = setTimeout(() => {
+        setForm(editScope ? { ...editScope } : EMPTY_SCOPE);
+        setErrors({});
+        setSaving(false);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, [open, editScope]);
 

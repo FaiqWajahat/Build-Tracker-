@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   ArrowLeft, Building2, MapPin, DollarSign, CheckCircle2,
   CreditCard, ShieldAlert, Layers, ChevronDown, ChevronUp,
@@ -14,6 +14,7 @@ import useProjectStore from "@/store/useProjectStore";
 import { formatNumber } from "@/lib/utils";
 import useUserStore from "@/store/useUserStore";
 import { useCurrency } from "@/store/useSettingsStore";
+import { Pagination } from "@/components/ui/Pagination";
 
 const pct = (done, total) => (total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0);
 
@@ -56,6 +57,9 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
   const addDeduction = useContractorStore((s) => s.addDeduction);
   const addPayment = useContractorStore((s) => s.addPayment);
   const projects = useProjectStore((s) => s.projects);
+  const fetchPayments = useContractorStore((s) => s.fetchPayments);
+  const fetchDeductions = useContractorStore((s) => s.fetchDeductions);
+  const loading = useContractorStore((s) => s.loading);
 
   const [activeTab, setActiveTab] = useState("scopes");
   const [expandedScopes, setExpandedScopes] = useState({});
@@ -64,6 +68,24 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
   const [showProgressModal, setShowProgressModal] = useState(false);
   const [selectedAssignment, setSelectedAssignment] = useState(null);
   const [submittingProgress, setSubmittingProgress] = useState(false);
+
+  const [dedPage, setDedPage] = useState(1);
+  const [payPage, setPayPage] = useState(1);
+  const [logPage, setLogPage] = useState(1);
+
+  useEffect(() => {
+    fetchPayments(contractor.id);
+    fetchDeductions(contractor.id);
+  }, [contractor.id, fetchPayments, fetchDeductions]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDedPage(1);
+      setPayPage(1);
+      setLogPage(1);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [contractor.id, activeTab]);
 
   const [deductionForm, setDeductionForm] = useState({
     site: projectGroup.project?.name || "", amount: "", category: "Material Damage",
@@ -125,6 +147,16 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
     (l) => l.projectId === projectGroup.projectId &&
       (l.assigneeName?.toLowerCase() === contractor.name?.toLowerCase() || enrichedScopes.some((a) => a.id === l.assignmentId))
   ), [allLogs, projectGroup, contractor, enrichedScopes]);
+
+  const limit = 10;
+  const totalDedPages = Math.ceil(projectDeductions.length / limit);
+  const paginatedDeductions = projectDeductions.slice((dedPage - 1) * limit, dedPage * limit);
+
+  const totalPayPages = Math.ceil(projectPayments.length / limit);
+  const paginatedPayments = projectPayments.slice((payPage - 1) * limit, payPage * limit);
+
+  const totalLogPages = Math.ceil(projectLogs.length / limit);
+  const paginatedLogs = projectLogs.slice((logPage - 1) * limit, logPage * limit);
 
   const handleSaveDeduction = () => {
     if (!deductionForm.amount || !deductionForm.site) return;
@@ -600,8 +632,8 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               {projectLogs.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">No progress logs recorded yet.</div>
               ) : (
-                projectLogs.map((log, i) => (
-                  <div key={log.id} className={`grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_1.5fr_1fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < projectLogs.length - 1 ? "border-b border-border/40" : ""}`}>
+                paginatedLogs.map((log, i) => (
+                  <div key={log.id} className={`grid grid-cols-[1.5fr_1fr_1fr_1fr_1fr_1.5fr_1fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < paginatedLogs.length - 1 ? "border-b border-border/40" : ""}`}>
                     <div>
                       <p className="font-bold text-foreground">{log.scopeName}</p>
                       <p className="text-[9px] text-muted-foreground">{log.id}</p>
@@ -624,6 +656,12 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               )}
             </div>
           </div>
+          <Pagination
+            page={logPage}
+            totalPages={totalLogPages}
+            onPageChange={setLogPage}
+            loading={loading}
+          />
         </div>
       )}
 
@@ -643,8 +681,8 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               {projectDeductions.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">No deductions logged for this project.</div>
               ) : (
-                projectDeductions.map((d, i) => (
-                  <div key={d.id} className={`grid grid-cols-[1fr_1.2fr_1.5fr_1fr_1.5fr_2fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < projectDeductions.length - 1 ? "border-b border-border/40" : ""}`}>
+                paginatedDeductions.map((d, i) => (
+                  <div key={d.id} className={`grid grid-cols-[1fr_1.2fr_1.5fr_1fr_1.5fr_2fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < paginatedDeductions.length - 1 ? "border-b border-border/40" : ""}`}>
                     <span className="font-bold text-muted-foreground">{d.id}</span>
                     <span className="font-black text-rose-500">{currency} {formatNumber(d.amount)}</span>
                     <span className={`inline-flex px-2 py-0.5 rounded-full text-[9px] font-bold ${deductionStyles[d.category] || ""}`}>{d.category}</span>
@@ -662,6 +700,12 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               )}
             </div>
           </div>
+          <Pagination
+            page={dedPage}
+            totalPages={totalDedPages}
+            onPageChange={setDedPage}
+            loading={loading}
+          />
         </div>
       )}
 
@@ -680,8 +724,8 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               {projectPayments.length === 0 ? (
                 <div className="py-12 text-center text-muted-foreground text-sm">No payments recorded for this project.</div>
               ) : (
-                projectPayments.map((p, i) => (
-                  <div key={p.id} className={`grid grid-cols-[1fr_1.2fr_1fr_1.5fr_1.2fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < projectPayments.length - 1 ? "border-b border-border/40" : ""}`}>
+                paginatedPayments.map((p, i) => (
+                  <div key={p.id} className={`grid grid-cols-[1fr_1.2fr_1fr_1.5fr_1.2fr] px-5 py-3.5 items-center text-xs hover:bg-muted/10 transition-colors ${i < paginatedPayments.length - 1 ? "border-b border-border/40" : ""}`}>
                     <span className="font-bold text-muted-foreground">{p.id}</span>
                     <span className="font-black text-foreground">{currency} {formatNumber(p.amount)}</span>
                     <span className="text-muted-foreground">{p.date}</span>
@@ -708,6 +752,12 @@ export default function ContractorProjectDetail({ contractor, projectGroup, onBa
               )}
             </div>
           </div>
+          <Pagination
+            page={payPage}
+            totalPages={totalPayPages}
+            onPageChange={setPayPage}
+            loading={loading}
+          />
         </div>
       )}
 

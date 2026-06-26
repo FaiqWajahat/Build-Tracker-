@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import {
   CreditCard, CheckCircle2, Clock, Ban,
   Search, Filter, Plus, FileDown, Check, X,
@@ -23,6 +23,8 @@ export default function SubPaymentsPage() {
   const currency = useCurrency();
   const contractors = useContractorStore((s) => s.contractors);
   const payments = useContractorStore((s) => s.payments);
+  const fetchContractorData = useContractorStore((s) => s.fetchContractorData);
+  const fetchPayments = useContractorStore((s) => s.fetchPayments);
   const currentUser = useUserStore((s) => s.currentUser);
   const isReadOnly = currentUser?.role === "User";
   const addPayment = useContractorStore((s) => s.addPayment);
@@ -30,6 +32,7 @@ export default function SubPaymentsPage() {
   const rejectPayment = useContractorStore((s) => s.rejectPayment);
   const deletePayment = useContractorStore((s) => s.deletePayment);
   const projects = useProjectStore((s) => s.projects);
+  const fetchProjects = useProjectStore((s) => s.fetchProjects);
 
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("All");
@@ -38,6 +41,12 @@ export default function SubPaymentsPage() {
 
   const loading = useContractorStore((s) => s.loading);
   const loaded = useContractorStore((s) => s.loaded);
+
+  useEffect(() => {
+    fetchContractorData();
+    fetchProjects();
+    fetchPayments(null, 1, 100);
+  }, [fetchContractorData, fetchProjects, fetchPayments]);
 
   const [form, setForm] = useState({
     subcontractorId: "",

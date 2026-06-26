@@ -18,7 +18,10 @@ export function ThemeProvider({ children }) {
   useEffect(() => {
     const storedTheme = localStorage.getItem("theme");
     if (storedTheme) {
-      setTheme(storedTheme);
+      const timer = setTimeout(() => {
+        setTheme(storedTheme);
+      }, 0);
+      return () => clearTimeout(timer);
     }
   }, []);
 

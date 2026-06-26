@@ -36,6 +36,8 @@ export async function GET(request) {
     const { searchParams } = request.nextUrl;
     const projectId = searchParams.get("projectId");
     const assignmentId = searchParams.get("assignmentId");
+    const pageParam = searchParams.get("page");
+    const limitParam = searchParams.get("limit");
 
     const conditions = [];
     const values = [];
@@ -52,6 +54,41 @@ export async function GET(request) {
     const whereClause =
       conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
 
+    if (pageParam || limitParam) {
+      const page = Math.max(1, parseInt(pageParam, 10) || 1);
+      const limit = Math.max(1, Math.min(100, parseInt(limitParam, 10) || 20));
+      const offset = (page - 1) * limit;
+
+      const countRes = await pool.query(
+        `SELECT COUNT(*)
+         FROM progress_logs pl
+         JOIN projects         p  ON pl.project_id    = p.id
+         JOIN scope_assignments sa ON pl.assignment_id = sa.id
+         ${whereClause}`,
+        values
+      );
+      const total = parseInt(countRes.rows[0].count, 10);
+      const totalPages = Math.ceil(total / limit);
+
+      const logsRes = await pool.query(
+        `SELECT pl.*,
+                p.display_id  AS project_display_id,
+                sa.display_id AS assignment_display_id
+         FROM progress_logs pl
+         JOIN projects         p  ON pl.project_id    = p.id
+         JOIN scope_assignments sa ON pl.assignment_id = sa.id
+         ${whereClause}
+         ORDER BY pl.date DESC, pl.created_at DESC
+         LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+        [...values, limit, offset]
+      );
+
+      return NextResponse.json({
+        data: logsRes.rows.map(formatLog),
+        pagination: { page, limit, total, totalPages }
+      });
+    }
+
     const logsRes = await pool.query(
       `SELECT pl.*,
               p.display_id  AS project_display_id,
@@ -60,7 +97,8 @@ export async function GET(request) {
        JOIN projects         p  ON pl.project_id    = p.id
        JOIN scope_assignments sa ON pl.assignment_id = sa.id
        ${whereClause}
-       ORDER BY pl.created_at DESC`,
+       ORDER BY pl.date DESC, pl.created_at DESC
+       LIMIT 500`,
       values
     );
 
