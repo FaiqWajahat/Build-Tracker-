@@ -903,21 +903,31 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
                             return (
                               <div key={scope.id} className="border-t border-border/40">
                                 {/* Scope row */}
-                                <div className={`flex items-center gap-0 transition-colors ${scopeSelected ? "bg-primary/6" : "hover:bg-muted/30"}`}>
-                                  <button
-                                    onClick={() => selectScope(scope)}
-                                    className={`flex-1 flex items-center gap-2 px-4 py-2.5 text-left cursor-pointer`}
-                                  >
-                                    <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
-                                      ${scopeSelected ? "border-primary bg-primary" : "border-border"}`}>
-                                      {scopeSelected && <div className="w-1.5 h-1.5 bg-primary-foreground rounded-full" />}
-                                    </div>
-                                    <span className={`text-xs font-semibold flex-1 ${scopeSelected ? "text-primary" : "text-foreground"}`}>
-                                      {scope.name}
-                                    </span>
-                                    <span className="text-[10px] font-mono text-muted-foreground">{scope.uom}</span>
-                                  </button>
-                                </div>
+                                <button
+                                  onClick={() => selectScope(scope)}
+                                  className={`w-full flex items-center gap-3 px-4 py-2.5 text-left cursor-pointer transition-all
+                                    ${scopeSelected
+                                      ? "bg-primary/8 hover:bg-primary/10"
+                                      : "hover:bg-muted/40"}`}
+                                >
+                                  {/* Radio dot */}
+                                  <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center shrink-0 transition-all
+                                    ${scopeSelected ? "border-primary bg-primary shadow-sm" : "border-border"}`}>
+                                    {scopeSelected && <div className="w-1.5 h-1.5 bg-primary-foreground rounded-full" />}
+                                  </div>
+                                  {/* Scope name */}
+                                  <span className={`text-xs font-semibold flex-1 truncate ${scopeSelected ? "text-primary" : "text-foreground"}`}>
+                                    {scope.name}
+                                  </span>
+                                  {/* UOM pill badge */}
+                                  <span className={`text-[9.5px] font-bold font-mono px-2 py-0.5 rounded-md shrink-0 transition-colors
+                                    ${scopeSelected
+                                      ? "bg-primary/15 text-primary border border-primary/25"
+                                      : "bg-muted text-muted-foreground border border-border/60"}`}>
+                                    {scope.uom}
+                                  </span>
+                                  {scopeSelected && <Check size={12} className="text-primary shrink-0" />}
+                                </button>
                               </div>
                             );
                           })}
@@ -928,30 +938,41 @@ function AssignWizard({ projectId, project, phases, units, scopes, assigneeOptio
                 </div>
               </div>
 
-              {/* UOM override */}
+              {/* Selected scope summary card */}
               {form.scopeName && (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="animate-in fade-in slide-in-from-top-1 duration-200 space-y-3">
+                  {/* Summary card */}
+                  <div className="flex items-center gap-3 p-3.5 bg-primary/5 border border-primary/20 rounded-xl">
+                    <span className="text-2xl shrink-0">{form.tradeIcon}</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-bold text-primary truncate">{form.scopeName}</p>
+                      <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">{form.trade}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex flex-col items-end gap-0.5">
+                        <span className="text-[9px] uppercase font-bold text-muted-foreground tracking-wider">UOM</span>
+                        <span className="text-[12px] font-black font-mono px-2.5 py-0.5 rounded-lg bg-card border border-border text-foreground shadow-sm">
+                          {form.uom}
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => setForm((f) => ({ ...f, scopeId: '', scopeName: '', trade: '', tradeIcon: '🏗️', uom: '' }))}
+                        title="Clear selection"
+                        className="p-1.5 rounded-lg hover:bg-rose-500/10 text-muted-foreground hover:text-rose-500 transition-colors cursor-pointer ml-1"
+                      >
+                        <X size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  {/* Scope name override */}
                   <div>
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Scope Name (override)</label>
+                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Scope Name <span className="font-normal normal-case">(optional override)</span></label>
                     <input
                       value={form.scopeName}
                       onChange={(e) => setForm((f) => ({ ...f, scopeName: e.target.value }))}
                       placeholder="e.g. Ground Floor Slab"
                       className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring"
                     />
-                  </div>
-                  <div>
-                    <label className="text-[10px] uppercase font-bold text-muted-foreground tracking-wider">Unit of Measure</label>
-                    <select
-                      value={form.uom}
-                      onChange={(e) => setForm((f) => ({ ...f, uom: e.target.value }))}
-                      className="block mt-1 w-full px-3 py-2 bg-muted text-xs text-foreground rounded-lg border border-border outline-none focus:border-ring cursor-pointer"
-                    >
-                      <option value="">Select UOM</option>
-                      {["m²", "m³", "LM", "No.", "Set", "LS", "Ton", "kg"].map((u) => (
-                        <option key={u} value={u}>{u}</option>
-                      ))}
-                    </select>
                   </div>
                 </div>
               )}

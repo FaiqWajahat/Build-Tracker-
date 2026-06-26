@@ -206,3 +206,27 @@
 .du-7 { animation-delay: 0.21s; }
 .du-8 { animation-delay: 0.24s; }
 .du-9 { animation-delay: 0.27s; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PRINT / PDF STYLES
+   ═══════════════════════════════════════════════════════════════ */
+@media print {
+  /* Hide everything except the invoice document */
+  body > *:not(#__next),
+  nav, aside, header,
+  [class*="Sidebar"],
+  [class*="TopBar"],
+  [class*="no-print"],
+  .no-print {
+    display: none !important;
+  }
+
+  body { background: white !important; margin: 0; padding: 0; }
+  #__next { display: block !important; }
+
+  /* Make the invoice take full page */
+  .bg-background { background: white !important; padding: 0 !important; }
+
+  /* Print in colour */
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
