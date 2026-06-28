@@ -35,7 +35,8 @@ function formatInvoice(invoice, lineItems = []) {
     periodTo: invoice.period_to,
     lineItems: lineItems.map((li) => ({
       id: li.id,
-      assignmentId: li.assignment_display_id,
+      assignmentId: li.assignment_id,
+      assignmentDisplayId: li.assignment_display_id,
       description: li.description,
       unitLabel: li.unit_label,
       prevQty: Number(li.prev_qty || 0),
@@ -286,7 +287,7 @@ export async function PUT(request, { params }) {
           [
             invoice.id,
             li.assignmentId || null,
-            li.assignmentId || null,
+            li.assignmentDisplayId || null,
             li.description,
             li.unitLabel || "No.",
             li.prevQty || 0,

@@ -60,10 +60,14 @@ function formatInvoice(invoice, lineItems = []) {
   };
 }
 
+let tablesChecked = false;
+
 // ---------------------------------------------------------------------------
 // Ensure invoices table exists
 // ---------------------------------------------------------------------------
 async function ensureInvoiceTablesExist() {
+  if (tablesChecked) return;
+  
   // First ensure standard basic structure exists
   await pool.query(`
     CREATE TABLE IF NOT EXISTS invoices (
@@ -142,6 +146,7 @@ async function ensureInvoiceTablesExist() {
       END $$;
     `);
   }
+  tablesChecked = true;
 }
 
 // ---------------------------------------------------------------------------
@@ -236,9 +241,9 @@ export async function POST(request) {
     return NextResponse.json({ error: "Access Denied" }, { status: 403 });
   }
 
+  await ensureInvoiceTablesExist();
   const dbClient = await pool.connect();
   try {
-    await ensureInvoiceTablesExist();
     const body = await request.json();
     const {
       projectId,

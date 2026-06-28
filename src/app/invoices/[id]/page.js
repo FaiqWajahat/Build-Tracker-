@@ -154,6 +154,7 @@ export default function InvoiceDetailPage() {
         periodFrom: draft.periodFrom, periodTo: draft.periodTo,
         lineItems: (draft.lineItems || []).map((li) => ({
           assignmentId: li.assignmentId || null,
+          assignmentDisplayId: li.assignmentDisplayId || null,
           description: li.description, unitLabel: li.unitLabel,
           prevQty: parseFloat(li.prevQty || 0), currentQty: parseFloat(li.currentQty || 0),
           totalQty: parseFloat(li.totalQty || 0), rate: parseFloat(li.rate || 0),
