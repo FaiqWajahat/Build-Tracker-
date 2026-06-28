@@ -101,7 +101,7 @@ export default function SubPaymentsPage() {
   if (loading && !loaded && payments.length === 0) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
-        <Loader />
+        <Loader message="Loading Payments..." />
       </div>
     );
   }

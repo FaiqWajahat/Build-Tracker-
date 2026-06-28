@@ -109,7 +109,7 @@ export default function DeductionsPage() {
   if (loading && !loaded && deductions.length === 0) {
     return (
       <div className="flex items-center justify-center h-full min-h-[400px]">
-        <Loader />
+        <Loader message="Loading Deductions..." />
       </div>
     );
   }

@@ -17,6 +17,7 @@ import { PROJECT_TYPES } from "@/components/projects/ProjectTypeConfig";
 import useUserStore from "@/store/useUserStore";
 import { useCurrency } from "@/store/useSettingsStore";
 import { computeProjectStatus, PROJECT_STATUS_CONFIG } from "@/lib/projectStatus";
+import Loader from "@/components/ui/Loader";
 
 import OverviewTab       from "@/components/project-detail/OverviewTab";
 import AssignmentsTab    from "@/components/project-detail/AssignmentsTab";
@@ -105,8 +106,8 @@ export default function ProjectDetailPage() {
   /* ── Loading state ── */
   if (!project && !projectsLoaded) {
     return (
-      <div className="p-8 flex items-center justify-center min-h-[400px]">
-        <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader message="Loading Project..." />
       </div>
     );
   }
