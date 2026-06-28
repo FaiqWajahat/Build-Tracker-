@@ -304,7 +304,7 @@ export async function PUT(request, { params }) {
 
     await dbClient.query("COMMIT");
 
-    const liRes = await pool.query(
+    const liRes = await dbClient.query(
       `SELECT * FROM invoice_line_items WHERE invoice_id = $1 ORDER BY id ASC`,
       [invoice.id]
     );

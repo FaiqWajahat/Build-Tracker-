@@ -409,7 +409,7 @@ export async function POST(request) {
     await dbClient.query("COMMIT");
 
     // Fetch back the line items for response
-    const liRes = await pool.query(
+    const liRes = await dbClient.query(
       `SELECT * FROM invoice_line_items WHERE invoice_id = $1 ORDER BY id ASC`,
       [invoice.id]
     );
